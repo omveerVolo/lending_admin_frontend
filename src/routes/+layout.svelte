@@ -1,4 +1,5 @@
 <script>
+	export const prerender = true;
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { validateToken } from '$lib/services/validateToken';
