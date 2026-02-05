@@ -45,6 +45,74 @@
 	<tbody class="before:block before:leading-[0] before:content-['-'] before:text-transparent">
 		{#each rows as row, i (i)}
 			{@render tableRow(columns, row, i)}
+			<!-- {#if expandedIndex === i && card}
+    <tr>
+        <td colspan={orderConfig.length} class="p-0 lg:relative">
+            <div
+                class="fixed lg:static inset-x-0 top-1/2 -translate-y-1/2 lg:translate-y-0 z-40 lg:z-auto
+                w-full lg:max-w-none lg:w-full
+                bg-white border-y lg:border-[#ad5389]/40 shadow-2xl lg:shadow-none
+                rounded-none lg:rounded-b-2xl
+                flex flex-col max-h-[90vh] lg:max-h-none"
+            >
+                <div class="flex items-center justify-between p-5 bg-slate-50 border-b border-slate-100 lg:hidden">
+                    <span class="text-xs font-bold uppercase tracking-widest text-slate-500">Order Information</span>
+                    <button
+                        onclick={() => (expandedIndex = null)}
+                        class="p-2 bg-white rounded-full shadow-sm text-slate-400 active:scale-95"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div class="custom-scrollbar overflow-y-auto p-6 lg:p-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-12 gap-y-6">
+                    {#each orderConfig as col (col.key)}
+                        {#if col.type === 'action_button'}
+                            <div class="flex flex-col py-6 border-b border-slate-50 lg:border-0 lg:py-0 order-first lg:order-last sm:col-span-2 lg:col-span-1">
+                                <button
+                                    onclick={(e) => {
+                                        e.stopPropagation();
+                                        expandedIndex = null;
+                                        popupData = row;
+                                    }}
+                                    class="w-full shrink-0 flex gap-3 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-4 px-6 text-white rounded-2xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all shadow-lg"
+                                >
+                                    <span class="text-sm">Close order</span>
+                                    <FolderClosed size={18} />
+                                </button>
+                            </div>
+                        {:else if row[col.key]}
+                            <div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0">
+                                <div class="flex flex-col min-w-0">
+                                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
+                                        {col.label || col.key}
+                                    </span>
+                                    <span class="text-base font-semibold text-slate-800 break-words">
+                                        {row[col.key]}
+                                    </span>
+                                </div>
+
+                                <div class="flex items-center gap-2 lg:hidden">
+                                    {#if col.hasCopy}
+                                        <button onclick={() => navigator.clipboard.writeText(row[col.key])} class="p-2 text-slate-400 bg-slate-50 rounded-lg">
+                                            <Copy size={16} />
+                                        </button>
+                                    {/if}
+                                </div>
+                            </div>
+                        {/if}
+                    {/each}
+                </div>
+            </div>
+
+            <div
+                role="presentation"
+                onclick={() => (expandedIndex = null)}
+                class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 lg:hidden"
+            ></div>
+        </td>
+    </tr>
+{/if} -->
 
 			{#if expandedIndex === i && card}
 				<tr>
@@ -129,74 +197,6 @@
 	</thead>
 {/snippet}
 
-<!-- {#snippet tableRow(column_data, row, index)}
-	<tr
-		onclick={() => {
-			selectedHospital = row;
-			expandedIndex = expandedIndex === index ? null : index;
-		}}
-		class="group transition-all cursor-pointer
-        {expandedIndex === index ? 'bg-slate-50' : 'bg-white'}"
-	>
-		{#each column_data as column, idx (idx)}
-			<td
-				class="
-                    {column.isImportant ? 'table-cell' : 'hidden lg:table-cell'} 
-                    p-4 border-y transition-all
-                    max-lg:border-x-2 max-lg:rounded-xl
-                    lg:border-y-0 lg:border-b lg:border-t lg:border-slate-100
-                    lg:first:border-l-2 lg:last:border-r-2 lg:border-transparent
-                    group-hover:border-[#ad5389]/40
-                    {expandedIndex === index ? 'border-[#ad5389]/40 ' : 'border-slate-100'}
-                "
-			>
-				<div class="flex items-center justify-between gap-4">
-					<div class="flex flex-col truncate">
-						<span class="truncate text-slate-700 font-semibold lg:font-medium">
-							{row[column.key] || '—'}
-						</span>
-					</div>
-
-					<div class="flex items-center gap-2 shrink-0">
-						{#if column.hasCopy}
-							<button
-								onclick={(e) => {
-									e.stopPropagation();
-									navigator.clipboard.writeText(row[column.key]);
-								}}
-								class="p-2 -m-2 text-slate-400 hover:text-[#ad5389] cursor-pointer"
-							>
-								<Copy size={16} />
-							</button>
-						{/if}
-
-						{#if column.hasEdit}
-							<button
-								onclick={(e) => {
-									e.stopPropagation();
-									activateEmailPopUp(row);
-								}}
-								class="p-2 -m-2 text-slate-400 hover:text-[#ad5389] cursor-pointer"
-							>
-								<Edit size={16} />
-							</button>
-						{/if}
-
-						<div class="lg:hidden text-slate-300 ml-1">
-							<ChevronRight
-								size={18}
-								class="transition-transform duration-300 {expandedIndex === index
-									? 'rotate-90 text-[#ad5389]'
-									: ''}"
-							/>
-						</div>
-					</div>
-				</div>
-			</td>
-		{/each}
-	</tr>
-{/snippet} -->
-
 {#snippet tableRow(column_data, row, index)}
 	<tr
 		onclick={() => {
@@ -212,16 +212,16 @@
                     {column.isImportant ? 'table-cell' : 'hidden lg:table-cell'} 
                     p-4 transition-all duration-200
                     
-                    /* Desktop Layout */
+
                     lg:border-t-1 lg:border-b-1 lg:border-x-0
                     
-                    /* Vertical Alignment / Side Caps */
+
                     lg:first:border-l-1 lg:last:border-r-1
                     
-                    /* HOVER STATE: Show full border around the row */
+
                     group-hover:border-[#ad5389]/40
                     
-                    /* EXPANDED vs NORMAL STATE */
+
                     {expandedIndex === index
 					? 'border-y-[#ad5389]/40 border-x-[#ad5389]/40 lg:border-b-transparent'
 					: 'border-t-transparent border-x-transparent border-b-slate-100 group-hover:border-b-[#ad5389]/40'}

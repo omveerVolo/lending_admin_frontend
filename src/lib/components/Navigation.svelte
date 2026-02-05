@@ -6,13 +6,17 @@
 		LogOut,
 		Menu,
 		X,
-		ChevronLeft
+		ChevronLeft,
+		HandCoins,
+		LogIn,
+		Database
 	} from 'lucide-svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { fly, fade } from 'svelte/transition';
 	import { navState } from '$lib/state/Navigation.svelte';
 	import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { user } from '$lib/state/role_and_permission.svelte';
 	let active_route = $derived(page.url.pathname);
 	let homeroute = $derived(
 		['/pages/leads/hospital', '/pages/leads/agent', '/pages/leads/payment', '/', ''].includes(
@@ -43,30 +47,52 @@
 			isMenuOpen = false;
 		}
 	};
-	// $inspect(active_route);
 
 	const routes = [
 		{
 			category: 'main',
 			options: [
-				{
-					label: 'Hospital',
-					route: '/pages/leads/hospital',
-					icon: Hospital,
-					handler: () => goto('/pages/leads/hospital')
-				},
-				{
-					label: 'Agent',
-					route: '/pages/leads/agent',
-					icon: Headphones,
-					handler: () => goto('/pages/leads/agent')
-				},
-				{
-					label: 'Pre Auth',
-					route: '/pages/leads/payment',
-					icon: BanknoteArrowDown,
-					handler: () => goto('/pages/leads/payment')
-				}
+				...(user.role != 'relationship_manager'
+					? [
+							{
+								label: 'Hospital',
+								route: '/pages/leads/hospital',
+								icon: Hospital,
+								handler: () => goto('/pages/leads/hospital')
+							},
+							{
+								label: 'Agent',
+								route: '/pages/leads/agent',
+								icon: Headphones,
+								handler: () => goto('/pages/leads/agent')
+							},
+							{
+								label: 'Pre Auth',
+								route: '/pages/leads/payment',
+								icon: BanknoteArrowDown,
+								handler: () => goto('/pages/leads/payment')
+							}
+						]
+					: [
+							{
+								label: 'Reimbursement cases',
+								route: '/pages/leads/reimbursement_cases',
+								icon: HandCoins,
+								handler: () => goto('/pages/leads/reimbursement_cases')
+							},
+							{
+								label: 'Hospital login',
+								route: '/pages/leads/hospital_login',
+								icon: LogIn,
+								handler: () => goto('/pages/leads/hospital_login')
+							},
+							{
+								label: 'All orders',
+								route: '/pages/leads/all_orders',
+								icon: Database,
+								handler: () => goto('/pages/leads/all_orders')
+							}
+						])
 			]
 		},
 		{
@@ -91,8 +117,9 @@
 		if (navState.prevPath) {
 			goto(navState.prevPath);
 		} else {
-			// Your "Safety Net" fallback
-			goto('/pages/leads/hospital');
+			user.role == 'relationship_manager'
+				? goto('/pages/leads/reimbursement_cases')
+				: goto('/pages/leads/hospital');
 		}
 	}
 </script>
@@ -176,7 +203,7 @@
 					{group.category}
 				</h3>
 
-				<div class="flex flex-col gap-1">
+				<div class="flex flex-col gap-3">
 					{#each group.options as item}
 						<button
 							onclick={() => navigate(item.handler)}

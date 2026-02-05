@@ -72,9 +72,10 @@
 			<div
 				in:slide={{ duration: 200 }}
 				out:fade={{ duration: 150 }}
-				class="absolute z-50 w-full mt-2 bg-white border border-slate-300 rounded-2xl shadow-xl overflow-hidden origin-top"
+				class="
+				absolute z-50 w-full mt-2 bg-white border border-slate-300 rounded-2xl shadow-xl overflow-hidden origin-top cursor-pointer"
 			>
-				<div class="max-h-[250px] overflow-y-auto p-2">
+				<div class="max-h-[250px] overflow-y-scroll custom-scrollbar p-2">
 					{#if options.length}
 						{#each options as option}
 							<button
@@ -83,7 +84,7 @@
 									if (onUpdate) onUpdate(option.value);
 									active = false;
 								}}
-								class="w-full px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-[#ad5389] font-semibold transition-colors cursor-pointer flex items-center justify-between rounded-lg"
+								class=" text-left w-full px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-[#ad5389] font-semibold transition-colors cursor-pointer flex items-center justify-between rounded-lg"
 							>
 								{option.label}
 								{#if value === option.value}
@@ -116,6 +117,26 @@
 
 <style>
 	@reference "tailwindcss";
+
+	:global(.custom-scrollbar::-webkit-scrollbar) {
+		width: 8px;
+		display: block;
+	}
+
+	:global(.custom-scrollbar::-webkit-scrollbar-track) {
+		background: #f1f1f1;
+		border-radius: 10px;
+	}
+
+	:global(.custom-scrollbar::-webkit-scrollbar-thumb) {
+		background: #888;
+		border-radius: 10px;
+		border: 2px solid #f1f1f1;
+	}
+
+	:global(.custom-scrollbar::-webkit-scrollbar-thumb:hover) {
+		background: #555;
+	}
 
 	.input-style {
 		@apply w-full bg-white border border-slate-300 p-4 rounded-2xl outline-none 

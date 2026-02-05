@@ -76,7 +76,7 @@
 		}
 
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}${endpoint}?${params.toString()}`, {
+			const response = await fetch(`${PUBLIC_BASE_URL}${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -104,14 +104,13 @@
 	function handleInput() {
 		currentPage = 1;
 	}
-
+	function onPageChange(newPage) {
+		currentPage = newPage;
+	}
 	function clearHospital() {
 		selectedHospital = {};
 	}
 
-	function onPageChange(newPage) {
-		currentPage = newPage;
-	}
 	function onboard() {
 		isOpenModal = true;
 	}

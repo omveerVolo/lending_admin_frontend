@@ -4,6 +4,7 @@
 	import { validateToken } from '$lib/services/validateToken';
 	import '../app.css';
 	import { updateNav } from '$lib/state/Navigation.svelte.js';
+	import { user } from '$lib/state/role_and_permission.svelte';
 
 	let { children } = $props();
 	let status = $state('loading');
@@ -15,7 +16,9 @@
 			if (!isValid && currentPath !== '/') {
 				goto('/', { replaceState: true });
 			} else if (isValid && currentPath === '/') {
-				goto('/pages/leads/hospital');
+				user.role == 'relationship_manager'
+					? goto('/pages/leads/hospital')
+					: goto('/pages/leads/reimbursement_cases');
 			} else {
 				status = 'ready';
 			}

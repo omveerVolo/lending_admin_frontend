@@ -6,7 +6,7 @@
 	import { Edit, Loader, Plus, Search, X } from 'lucide-svelte';
 
 	// State Management
-	let value = $state(''); // Search query
+	let value = $state('');
 	let currentPage = $state(1);
 	let totalPages = $state(1);
 	let rows = $state([]);

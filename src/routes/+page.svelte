@@ -4,6 +4,7 @@
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import { goto } from '$app/navigation';
 	import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { user } from '$lib/state/role_and_permission.svelte';
 
 	let step = $state(0);
 	let loading = $state(false);
@@ -49,7 +50,11 @@
 				throw new Error(data.message || 'Failed to send OTP');
 			}
 			loading = false;
-			goto('/pages/leads/hospital');
+			user.set_role({ value: data.role });
+			console.log(user.role);
+			data.role == 'relationship_manager'
+				? goto('/pages/leads/reimbursement_cases')
+				: goto('/pages/leads/hospital');
 			step = 1;
 		} catch (err) {
 			error = err.message;
