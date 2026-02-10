@@ -17,7 +17,7 @@ fi
 cd /home/ubuntu
 
 echo "Downloading build from S3..."
-/usr/local/bin/aws s3 cp s3://finnova-backend-frontend-staging-build/build-1 ./build.zip
+/usr/local/bin/aws s3 cp s3://finnova-backend-frontend-staging-build/build-1.zip ./build.zip
 
 echo "Extracting build..."
 mkdir -p /home/ubuntu/finnova-backend-frontend-staging
