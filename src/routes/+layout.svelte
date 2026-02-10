@@ -4,7 +4,7 @@
 	import { validateToken } from '$lib/services/validateToken';
 	import '../app.css';
 	import { updateNav } from '$lib/state/Navigation.svelte.js';
-	import { user } from '$lib/state/role_and_permission.svelte';
+	import { user } from '$lib/state/role_and_permission.svelte.js';
 
 	let { children } = $props();
 	let status = $state('loading');
