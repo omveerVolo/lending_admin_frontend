@@ -2,7 +2,7 @@ version: 0.0
 os: linux
 files:
   - source: /
-    destination: /home/ubuntu/frontend-staging
+    destination: /home/ubuntu/finnova-backend-frontend-staging
 hooks:
   BeforeInstall:
     - location: scripts/before.sh
