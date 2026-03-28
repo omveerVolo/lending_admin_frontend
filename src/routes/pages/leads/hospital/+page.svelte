@@ -1,5 +1,5 @@
 <script>
-	import { PUBLIC_BASE_URL } from '$env/static/public';
+	// import { PUBLIC_BASE_URL } from '$env/static/public';
 	import {
 		ArrowRight,
 		CheckCircle2,
@@ -76,7 +76,7 @@
 		}
 
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}${endpoint}`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health/"}${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});

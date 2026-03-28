@@ -3,7 +3,7 @@
 	import CountdownTimer from '$lib/components/CountdownTimer.svelte';
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import { goto } from '$app/navigation';
-	import { PUBLIC_BASE_URL } from '$env/static/public';
+	// import { PUBLIC_BASE_URL } from '$env/static/public';
 	import { user } from '$lib/state/role_and_permission.svelte';
 
 	let step = $state(0);
@@ -35,7 +35,7 @@
 
 		loading = true;
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}/auth/verify`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health/"}/auth/verify`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -109,7 +109,7 @@
 		error = '';
 
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}/auth/send`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health/"}/auth/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -146,7 +146,7 @@
 		error = '';
 
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}/auth/send`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health/"}/auth/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'

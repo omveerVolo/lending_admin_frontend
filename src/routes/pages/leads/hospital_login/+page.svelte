@@ -1,5 +1,5 @@
 <script>
-	import { PUBLIC_BASE_URL } from '$env/static/public';
+	// import { PUBLIC_BASE_URL } from '$env/static/public';
 	import Select from '$lib/components/UI/Select.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
 
@@ -51,7 +51,7 @@
 		buttonActive = true;
 		try {
 			// const token = getCookie('admin_jwt');
-			const res = await fetch(`${PUBLIC_BASE_URL}/api/order/closure`, {
+			const res = await fetch(`${"https://staging-backend.finnova.health/"}/api/order/closure`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -145,7 +145,7 @@
 	async function loginAsHospital(hospitalId, event) {
 		if (event) event.stopPropagation();
 		try {
-			const res = await fetch(`${PUBLIC_BASE_URL}/api/sso/generate`, {
+			const res = await fetch(`${"https://staging-backend.finnova.health/"}/api/sso/generate`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -177,7 +177,7 @@
 			// params.append('context', 'hospital');
 		}
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}/api/get_hospitals?${params.toString()}`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health/"}/api/get_hospitals?${params.toString()}`, {
 				method: 'GET',
 				credentials: 'include'
 			});

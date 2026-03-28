@@ -15,7 +15,7 @@
 	import { goto } from '$app/navigation';
 	import { fly, fade } from 'svelte/transition';
 	import { navState } from '$lib/state/Navigation.svelte';
-	import { PUBLIC_BASE_URL } from '$env/static/public';
+	// import { PUBLIC_BASE_URL } from '$env/static/public';
 	import { user } from '$lib/state/role_and_permission.svelte';
 	let active_route = $derived(page.url.pathname);
 	let homeroute = $derived(
@@ -27,7 +27,7 @@
 
 	const handleLogout = async () => {
 		try {
-			const response = await fetch(`${PUBLIC_BASE_URL}/auth/out`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health/"}/auth/out`, {
 				method: 'GET',
 				credentials: 'include'
 			});
