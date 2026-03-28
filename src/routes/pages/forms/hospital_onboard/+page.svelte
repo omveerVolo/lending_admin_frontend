@@ -589,7 +589,7 @@
 					mid_enabled: 'true'
 				});
 
-				const response = await fetch(`${"https://staging-backend.finnova.health/"}/api/hospital?${query.toString()}`, {
+				const response = await fetch(`${"https://staging-backend.finnova.health"}/api/hospital?${query.toString()}`, {
 					method: 'POST',
 					body: submissionData,
 					credentials: 'include'
@@ -706,7 +706,7 @@
 		const endpoint = '/api/get_hospitals';
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health/"}${endpoint}`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health"}${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -728,7 +728,7 @@
 		const endpoint = '/api/get_rm';
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health/"}${endpoint}`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health"}${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -751,7 +751,7 @@
 			console.log('edit population');
 			const loadData = async () => {
 				try {
-					const res = await fetch(`${"https://staging-backend.finnova.health/"}/api/hospitals/${hospital_id}`, {
+					const res = await fetch(`${"https://staging-backend.finnova.health"}/api/hospitals/${hospital_id}`, {
 						credentials: 'include'
 					});
 					const { hospital } = await res.json();

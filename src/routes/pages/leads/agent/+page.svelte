@@ -36,7 +36,7 @@
 		});
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health/"}${endpoint}?${params.toString()}`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health"}${endpoint}?${params.toString()}`, {
 				method: 'GET',
 				credentials: 'include'
 			});

@@ -4,7 +4,7 @@ import { user } from "$lib/state/role_and_permission.svelte";
 export async function validateToken() {
     console.log("validate Token at Route running")
     try {
-        const res = await fetch(`${"https://staging-backend.finnova.health/"}/`, {
+        const res = await fetch(`${"https://staging-backend.finnova.health"}/`, {
             credentials: "include",
             method: "GET",
         })

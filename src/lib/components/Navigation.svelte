@@ -27,7 +27,7 @@
 
 	const handleLogout = async () => {
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health/"}/auth/out`, {
+			const response = await fetch(`${"https://staging-backend.finnova.health"}/auth/out`, {
 				method: 'GET',
 				credentials: 'include'
 			});
