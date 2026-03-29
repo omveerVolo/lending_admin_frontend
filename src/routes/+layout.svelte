@@ -12,13 +12,18 @@
 	$effect(() => {
 		const currentPath = page.url.pathname;
 
+		// Immediately show login page if on root path to prevent "Checking access..." hang
+		if (currentPath === '/') {
+			status = 'ready';
+		}
+
 		validateToken().then((isValid) => {
 			if (!isValid && currentPath !== '/') {
 				goto('/', { replaceState: true });
 			} else if (isValid && currentPath === '/') {
 				user.role == 'relationship_manager'
-					? goto('/pages/leads/hospital')
-					: goto('/pages/leads/reimbursement_cases');
+					? goto('/pages/leads/reimbursement_cases')
+					: goto('/pages/leads/hospital');
 			} else {
 				status = 'ready';
 			}

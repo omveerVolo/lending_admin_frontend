@@ -4,6 +4,7 @@
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import { goto } from '$app/navigation';
 	// import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { PUBLIC_API_BASE_URL } from '$env/static/public';
 	import { user } from '$lib/state/role_and_permission.svelte';
 
 	let step = $state(0);
@@ -35,7 +36,7 @@
 
 		loading = true;
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}/auth/verify`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}/auth/verify`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -57,7 +58,7 @@
 				: goto('/pages/leads/hospital');
 			step = 1;
 		} catch (err) {
-			error = err.message;
+			error = err instanceof Error ? err.message : String(err);
 		} finally {
 			loading = false;
 		}
@@ -109,7 +110,7 @@
 		error = '';
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}/auth/send`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}/auth/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -126,7 +127,7 @@
 			// success
 			step = 1;
 		} catch (err) {
-			error = err.message;
+			error = err instanceof Error ? err.message : String(err);
 		} finally {
 			loading = false;
 		}
@@ -146,7 +147,7 @@
 		error = '';
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}/auth/send`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}/auth/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -161,7 +162,7 @@
 			}
 			step = 1;
 		} catch (err) {
-			error = err.message;
+			error = err instanceof Error ? err.message : String(err);
 		} finally {
 			isResending = false;
 		}
