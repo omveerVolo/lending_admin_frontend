@@ -19,6 +19,7 @@
 
 		validateToken().then((isValid) => {
 			if (!isValid && currentPath !== '/') {
+				// goto('/pages/leads/reimbursement_cases')
 				goto('/', { replaceState: true });
 			} else if (isValid && currentPath === '/') {
 				user.role == 'relationship_manager'
