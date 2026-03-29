@@ -26,16 +26,22 @@ export async function validateToken() {
             let data = await res.json();
             console.log("[Token Check] Payload:", data);
 
+            // Explicitly handle the expired/deleted token scenario expected from the backend
+            if (data && data.authenticated === false) {
+                console.warn("[Token Check] Backend explicitly reported authenticated: false");
+                return false;
+            }
+
             if (data && data.role) {
                 user.set_role({ value: data.role });
                 return true;
             } else {
-                console.warn("[Token Check] Missing 'role' in JSON payload.");
+                console.warn("[Token Check] Missing 'role' in JSON payload, but status was OK.");
                 // We return ok here depending on exact previous behavior
                 return res.ok;
             }
         } catch (jsonErr) {
-            console.error("[Token Check] Failed to parse JSON. Did backend return HTML instead of JSON for the '/' route?");
+            console.error("[Token Check] Failed to parse JSON from /auth/verify-token");
             return false;
         }
 

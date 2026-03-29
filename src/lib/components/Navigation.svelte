@@ -15,7 +15,7 @@
 	import { goto } from '$app/navigation';
 	import { fly, fade } from 'svelte/transition';
 	import { navState } from '$lib/state/Navigation.svelte';
-	// import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { PUBLIC_API_BASE_URL } from '$env/static/public';
 	import { user } from '$lib/state/role_and_permission.svelte';
 	let active_route = $derived(page.url.pathname);
 	let homeroute = $derived(
@@ -27,22 +27,19 @@
 
 	const handleLogout = async () => {
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}/auth/out`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}/auth/out`, {
 				method: 'GET',
 				credentials: 'include'
 			});
 
-			const data = await response.json();
-			// if (data.token) {
-			// 	localStorage.setItem('admin_jwt', JSON.stringify(data.token));
-			// }
-
 			if (!response.ok) {
-				throw new Error(data.message || 'Failed to send OTP');
+				console.error("Logout failed on backend");
 			}
 
-			goto('/');
+			user.clear_roles();
+			goto('/', { replaceState: true });
 		} catch (err) {
+            console.error("Logout error:", err);
 		} finally {
 			isMenuOpen = false;
 		}
