@@ -1,5 +1,5 @@
 <script>
-	// import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { PUBLIC_API_BASE_URL } from '$env/static/public';
 	import Select from '$lib/components/UI/Select.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
 
@@ -49,7 +49,7 @@
 
 		buttonActive = true;
 		try {
-			const res = await fetch(`${"https://staging-backend.finnova.health"}/api/reimbursement/reject`, {
+			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/reject`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -85,7 +85,7 @@
 			return;
 		}
 		try {
-			const res = await fetch(`${"https://staging-backend.finnova.health"}/api/reimbursement/ingest`, {
+			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/ingest`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -197,7 +197,7 @@
 		}
 		try {
 			const response = await fetch(
-				`${"https://staging-backend.finnova.health"}/api/reimbursement/pending?${params.toString()}`,
+				`${PUBLIC_API_BASE_URL}/api/reimbursement/pending?${params.toString()}`,
 				{
 					method: 'GET',
 					credentials: 'include'

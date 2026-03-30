@@ -6,7 +6,7 @@
 	import { ArrowLeft, ArrowRight, Loader, MenuIcon } from 'lucide-svelte';
 	import { toast } from '$lib/state/toastData.svelte';
 	import { validate_ifAgentFormEmpty } from '$lib/utils/add_agent_validation.svelte';
-	// import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { PUBLIC_API_BASE_URL } from '$env/static/public';
 
 	let loading = $state(false);
 	let errors = $state({});
@@ -16,7 +16,7 @@
 		loading = true;
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}${endpoint}`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -44,7 +44,7 @@
 		}
 		loading = true;
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}/api/user-agent`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}/api/user-agent`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {

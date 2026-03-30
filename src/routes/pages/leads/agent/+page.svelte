@@ -1,6 +1,6 @@
 <script>
 	import { goto } from '$app/navigation';
-	// import { PUBLIC_BASE_URL } from '$env/static/public';
+	import { PUBLIC_API_BASE_URL } from '$env/static/public';
 	import Table from '$lib/components/Table.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
 	import { Edit, Loader, Plus, Search, X } from 'lucide-svelte';
@@ -36,7 +36,7 @@
 		});
 
 		try {
-			const response = await fetch(`${"https://staging-backend.finnova.health"}${endpoint}?${params.toString()}`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}${endpoint}?${params.toString()}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
