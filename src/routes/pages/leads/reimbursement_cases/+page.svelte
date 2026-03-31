@@ -793,14 +793,14 @@
 
 {#snippet popUpRejection()}
 	<div
-		class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-auto"
+		class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
 	>
 		<div
 			class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-200 flex w-md flex-col min-h-[500px]"
 		>
 			<div class="flex items-center justify-between p-6">
 				<div class="flex flex-col">
-					<h2 class="text-2xl font-bold text-slate-800">Close Order</h2>
+					<h2 class="text-2xl font-bold text-slate-800">Reject Order</h2>
 					<p class="text-sm text-slate-500 font-mono mt-1">{rejection_order?._id}</p>
 				</div>
 				<button
