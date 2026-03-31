@@ -1,5 +1,6 @@
 <script>
-	import { PUBLIC_API_BASE_URL } from '$env/static/public';
+	import { goto } from '$app/navigation';
+	import { PUBLIC_API_BASE_URL} from '$env/static/public';
 	import Select from '$lib/components/UI/Select.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
 
@@ -35,6 +36,8 @@
 	let rejection_order = $state(null);
 	let rejection_reason = $state('');
 	let inputsData = $state({});
+	let fetchingFile = $state(null);
+
 	function handleInput() {
 		currentPage = 1;
 	}
@@ -179,7 +182,40 @@
 	$effect(async () => {
 		loadData();
 	});
+	async function handleFileClick(e, orderId) {
+    e.preventDefault(); // Prevent default anchor behavior
+    e.stopPropagation(); // Prevent row expansion
 
+	if (fetchingFile) return;
+	fetchingFile = orderId;
+
+    try {
+        const url = await getFileUrl(orderId);
+        if (url) {
+            window.open(url, '_blank', 'noopener,noreferrer');
+        } else {
+            toast.update('Error', 'File URL not found', 'failed');
+        }
+    } catch (err) {
+        console.error("Failed to open file:", err);
+        toast.update('Error', 'Failed to retrieve file', 'failed');
+    } finally {
+		fetchingFile = null;
+	}
+}
+	async function getFileUrl(orderId) {
+		let response = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/${orderId}/policy-url`, {
+			method: 'GET',
+			credentials: "include",
+			headers: {
+			'Content-Type': 'application/json'
+			},
+		});
+		let data = await response.json()
+		console.log(data);
+		return data?.url
+		
+	}
 	async function loadData() {
 		const isSearch = value.trim().length > 0;
 		if (rejection_order) {
@@ -200,7 +236,10 @@
 				`${PUBLIC_API_BASE_URL}/api/reimbursement/pending?${params.toString()}`,
 				{
 					method: 'GET',
-					credentials: 'include'
+					credentials: "include",
+					headers: {
+					'Content-Type': 'application/json'
+				},
 				}
 			);
 
@@ -367,27 +406,29 @@
 													{/if}
 												</div>
 											{:else if col.type === 'url'}
-												<div
-													class="flex flex-col py-6 border-b border-slate-50 lg:border-0 lg:py-0 sm:col-span-2 lg:col-span-1"
-												>
-													<span
-														class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 lg:hidden"
-													>
-														{col.label}
-													</span>
-													<a
-														href={row[col.key]}
-														target="_blank"
-														onclick={(e) => e.stopPropagation()}
-														class="w-full shrink-0 flex gap-3 bg-white text-blue-600 font-bold items-center justify-center py-4 px-6 rounded-2xl border border-slate-200 hover:border-blue-600 hover:shadow-md transition-all group/expand-link"
-													>
-														<span class="text-sm">View Document</span>
-														<ExternalLink
-															size={18}
-															class="transition-transform duration-300 group-hover/expand-link:-translate-y-1 group-hover/expand-link:translate-x-1"
-														/>
-													</a>
-												</div>
+												<div class="flex flex-col truncate">
+    <button
+        onclick={(e) => handleFileClick(e, row?.orderId)}
+		disabled={fetchingFile === row?.orderId}
+        class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+        <span class="text-sm">
+			{#if fetchingFile === row?.orderId}
+				Loading...
+			{:else}
+				File
+			{/if}
+		</span>
+		{#if fetchingFile === row?.orderId}
+			<Loader size={18} class="animate-spin" />
+		{:else}
+			<ExternalLink
+				size={18}
+				class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
+			/>
+		{/if}
+    </button>
+</div>
 											{:else if row[col.key]}
 												<div
 													class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0"
@@ -490,18 +531,27 @@
 				<div class="flex items-center justify-between gap-4">
 					{#if column.type == 'url'}
 						<div class="flex flex-col truncate">
-							<a
-								onclick={(e) => e.stopPropagation()}
-								href={row[column.key]}
-								target="_blank"
-								class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link"
+							<button
+								onclick={(e) => handleFileClick(e, row?.orderId)}
+								disabled={fetchingFile === row?.orderId}
+								class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link disabled:opacity-50 disabled:cursor-not-allowed"
 							>
-								<span class="text-sm">File</span>
-								<ExternalLink
-									size={18}
-									class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
-								/>
-							</a>
+								<span class="text-sm">
+									{#if fetchingFile === row?.orderId}
+										Loading...
+									{:else}
+										File
+									{/if}
+								</span>
+								{#if fetchingFile === row?.orderId}
+									<Loader size={18} class="animate-spin" />
+								{:else}
+									<ExternalLink
+										size={18}
+										class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
+									/>
+								{/if}
+							</button>
 						</div>
 					{:else if column.type == 'input'}
 						<div

@@ -284,7 +284,7 @@
 														onclick={(e) => {
 															e.stopPropagation();
 															expandedIndex = null;
-															popupData = row;
+															col.onclick(row);
 														}}
 														class="w-full shrink-0 flex gap-3 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-4 px-6 text-white rounded-2xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all shadow-lg"
 													>
@@ -397,7 +397,7 @@
 							<button
 								onclick={(e) => {
 									e.stopPropagation();
-									column.onclick(row._id);
+									column.onclick(row);
 								}}
 								class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-4 text-white rounded-2xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one"
 							>

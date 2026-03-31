@@ -4,7 +4,7 @@
 	import OtpInput from '$lib/components/OtpInput.svelte';
 	import { goto } from '$app/navigation';
 	import { PUBLIC_API_BASE_URL } from '$env/static/public';
-	import { PUBLIC_API_BASE_URL } from '$env/static/public';
+
 	import { user } from '$lib/state/role_and_permission.svelte';
 
 	let step = $state(0);
