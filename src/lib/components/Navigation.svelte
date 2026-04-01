@@ -49,7 +49,7 @@
 		{
 			category: 'main',
 			options: [
-				...(user.role != 'relationship_manager'
+				...(!['relationship_manager', 'doctor', 'lender'].includes(user.role?.toLowerCase()?.trim())
 					? [
 							{
 								label: 'Hospital',
@@ -77,18 +77,22 @@
 								icon: HandCoins,
 								handler: () => goto('/pages/leads/reimbursement_cases')
 							},
-							{
-								label: 'Hospital login',
-								route: '/pages/leads/hospital_login',
-								icon: LogIn,
-								handler: () => goto('/pages/leads/hospital_login')
-							},
-							{
-								label: 'All orders',
-								route: '/pages/leads/all_orders',
-								icon: Database,
-								handler: () => goto('/pages/leads/all_orders')
-							}
+							...(user.role?.toLowerCase()?.trim() === 'relationship_manager'
+								? [
+										{
+											label: 'Hospital login',
+											route: '/pages/leads/hospital_login',
+											icon: LogIn,
+											handler: () => goto('/pages/leads/hospital_login')
+										},
+										{
+											label: 'All orders',
+											route: '/pages/leads/all_orders',
+											icon: Database,
+											handler: () => goto('/pages/leads/all_orders')
+										}
+								  ]
+								: [])
 						])
 			]
 		},
@@ -114,7 +118,7 @@
 		if (navState.prevPath) {
 			goto(navState.prevPath);
 		} else {
-			user.role == 'relationship_manager'
+			['relationship_manager', 'doctor', 'lender'].includes(user.role?.toLowerCase()?.trim())
 				? goto('/pages/leads/reimbursement_cases')
 				: goto('/pages/leads/hospital');
 		}

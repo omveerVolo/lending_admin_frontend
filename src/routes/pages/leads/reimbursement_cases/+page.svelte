@@ -3,6 +3,7 @@
 	import { PUBLIC_API_BASE_URL} from '$env/static/public';
 	import Select from '$lib/components/UI/Select.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
+	import { user } from '$lib/state/role_and_permission.svelte';
 
 	import {
 		CheckCircle,
@@ -25,6 +26,7 @@
 	let card = true;
 	let rows = $state([]);
 	let currentPage = $state(1);
+	let baseEndpoint = $derived(user.role?.toLowerCase()?.trim() === 'doctor' ? '/api/reimbursement/doctor' : '/api/reimbursement/lender');
 	let value = $state('');
 	let loading = $state(false);
 	let popupData = $state(null);
@@ -52,7 +54,7 @@
 
 		buttonActive = true;
 		try {
-			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/reject`, {
+			const res = await fetch(`${PUBLIC_API_BASE_URL}${baseEndpoint}/reject`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -88,7 +90,7 @@
 			return;
 		}
 		try {
-			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/ingest`, {
+			const res = await fetch(`${PUBLIC_API_BASE_URL}${baseEndpoint}/submit`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -99,9 +101,9 @@
 			const data = await res.json();
 			if (res.ok) {
 				toast.update(
-					data.success ? 'Success' : 'Error',
-					data.success ? 'Order Ingested successfully' : 'Order Ingestion Failed',
-					data.success ? 'success' : 'failed'
+					data.statusMessage ? 'Success' : 'Error',
+					data.statusMessage ? 'Order Ingested successfully' : 'Order Ingestion Failed',
+					data.statusMessage ? 'success' : 'failed'
 				);
 				await loadData();
 			} else {
@@ -178,7 +180,7 @@
 			}
 		}
 	]);
-	$inspect(inputsData);
+	// $inspect(inputsData);
 	$effect(async () => {
 		loadData();
 	});
@@ -233,7 +235,7 @@
 		}
 		try {
 			const response = await fetch(
-				`${PUBLIC_API_BASE_URL}/api/reimbursement/pending?${params.toString()}`,
+				`${PUBLIC_API_BASE_URL}${baseEndpoint}/pending?${params.toString()}`,
 				{
 					method: 'GET',
 					credentials: "include",

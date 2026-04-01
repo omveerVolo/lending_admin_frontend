@@ -1,5 +1,6 @@
 <script>
 	import { PUBLIC_API_BASE_URL } from '$env/static/public';
+	import { user } from '$lib/state/role_and_permission.svelte';
 	import {
 		ArrowRight,
 		CheckCircle2,
@@ -61,6 +62,13 @@
 		{ key: 'relationship_manager', label: 'Relationship Manager' }
 	];
 	async function loadData() {
+		const role = user.role?.toLowerCase()?.trim();
+		if (role === 'doctor' || role === 'lender') {
+			rows = [];
+			loading = false;
+			return;
+		}
+
 		const isSearch = value.trim().length > 0;
 		const endpoint = isSearch ? '/api/search_hospitals' : '/api/get_hospitals';
 

@@ -18,13 +18,19 @@
 		}
 
 		validateToken().then((isValid) => {
+			const role = user.role?.toLowerCase()?.trim();
+			const isRestrictedRole = ['doctor', 'lender'].includes(role);
+			const isBlockedPath = /\/(hospital|hospital_login|hospital_onboard|edit_hospital|add_agent|agent)/i.test(currentPath);
+
 			if (!isValid && currentPath !== '/') {
 				// goto('/pages/leads/reimbursement_cases')
 				goto('/', { replaceState: true });
 			} else if (isValid && currentPath === '/') {
-				user.role == 'relationship_manager'
+				['relationship_manager', 'doctor', 'lender'].includes(role)
 					? goto('/pages/leads/reimbursement_cases')
 					: goto('/pages/leads/hospital');
+			} else if (isValid && isRestrictedRole && isBlockedPath) {
+				goto('/pages/leads/reimbursement_cases');
 			} else {
 				status = 'ready';
 			}

@@ -2,6 +2,7 @@
 	import { PUBLIC_API_BASE_URL } from '$env/static/public';
 	import Select from '$lib/components/UI/Select.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
+	import { user } from '$lib/state/role_and_permission.svelte';
 
 	import {
 		ChevronRight,
@@ -164,6 +165,13 @@
 	}
 
 	async function loadData() {
+		const role = user.role?.toLowerCase()?.trim();
+		if (role === 'doctor' || role === 'lender') {
+			rows = [];
+			loading = false;
+			return;
+		}
+
 		const isSearch = value.trim().length > 0;
 
 		let params = new URLSearchParams({

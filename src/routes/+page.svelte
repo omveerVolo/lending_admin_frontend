@@ -53,7 +53,7 @@
 			loading = false;
 			user.set_role({ value: data.role });
 			console.log(user.role);
-			data.role == 'relationship_manager'
+			['relationship_manager', 'doctor', 'lender'].includes(data.role?.toLowerCase()?.trim())
 				? goto('/pages/leads/reimbursement_cases')
 				: goto('/pages/leads/hospital');
 			step = 1;

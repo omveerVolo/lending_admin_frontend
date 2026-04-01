@@ -158,7 +158,7 @@
 			// params.append('context', 'hospital');
 		}
 		try {
-			const response = await fetch(`${PUBLIC_API_BASE_URL}/api/allOrders??${params.toString()}`, {
+			const response = await fetch(`${PUBLIC_API_BASE_URL}/api/allOrders?${params.toString()}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -169,7 +169,7 @@
 				created_at: order.created_at
 					? new Date(order.created_at).toLocaleDateString().split('T')[0]
 					: 'N/A',
-				order_status: order.status.leadStatus,
+				order_status: order.status?.leadStatus || 'N/A',
 				order_closure: order.OrderClosure || false,
 				status: order.status?.esStatus || 'N/A',
 				disbursedAmount: order.status?.disbursedAmount?.$numberDecimal || 'N/A'
