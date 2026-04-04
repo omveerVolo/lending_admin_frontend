@@ -70,14 +70,14 @@
 		}
 	}
 	const orderConfig = [
-		{
-			label: 'Order ID',
-			key: '_id',
-			width: '180px', // Increased for long IDs (e.g., UUIDs or MongoIDs)
-			display: 'always',
-			type: 'text',
-			hasCopy: true
-		},
+		// {
+		// 	label: 'Order ID',
+		// 	key: '_id',
+		// 	width: '180px', // Increased for long IDs (e.g., UUIDs or MongoIDs)
+		// 	display: 'always',
+		// 	type: 'text',
+		// 	hasCopy: true
+		// },
 		{
 			label: 'Order Type',
 			key: 'orderType',

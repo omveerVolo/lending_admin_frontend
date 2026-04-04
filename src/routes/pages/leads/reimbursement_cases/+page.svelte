@@ -39,6 +39,51 @@
 	let rejection_reason = $state('');
 	let inputsData = $state({});
 	let fetchingFile = $state(null);
+	let selected_order_for_files = $state(null);
+	
+	let orderDocuments = $derived.by(() => {
+		if (!selected_order_for_files) return [];
+		
+		const docs = [];
+		const processDocuments = (documents) => {
+			if (!documents) return;
+			if (documents.policyFile) docs.push({ name: 'Policy Document', url: documents.policyFile });
+			if (documents.prescriptionLetter) docs.push({ name: 'Prescription Letter', url: documents.prescriptionLetter });
+			if (documents.billEstimate) docs.push({ name: 'Bill Estimate', url: documents.billEstimate });
+			if (documents.investigationDocuments && Array.isArray(documents.investigationDocuments)) {
+				documents.investigationDocuments.forEach((url, i) => {
+					docs.push({ name: `Investigation Document ${i + 1}`, url: url });
+				});
+			}
+		};
+
+		const hasActualDocs = (docsObj) => {
+			if (!docsObj) return false;
+			if (docsObj.policyFile || docsObj.prescriptionLetter || docsObj.billEstimate) return true;
+			if (docsObj.investigationDocuments && docsObj.investigationDocuments.length > 0) return true;
+			return false;
+		};
+
+		const getDocsFromActions = (actions) => {
+			if (!actions || !Array.isArray(actions)) return;
+			const actionWithDocs = actions.slice().reverse().find(a => hasActualDocs(a.documents));
+			if (actionWithDocs) processDocuments(actionWithDocs.documents);
+		};
+
+		getDocsFromActions(selected_order_for_files.doctorActions);
+		if (docs.length === 0) {
+			getDocsFromActions(selected_order_for_files.lenderActions);
+		}
+
+		return docs;
+	});
+
+	function formatAmount(amt) {
+		if (amt === 'N/A' || amt === undefined || amt === null || amt === '') return 'N/A';
+		const num = Number(amt);
+		if (isNaN(num) || num === 0) return 'N/A';
+		return Number.isInteger(num) ? String(num) : num.toFixed(2);
+	}
 
 	function handleInput() {
 		currentPage = 1;
@@ -66,12 +111,12 @@
 
 			const data = await res.json();
 
-			if (res.ok && data.success) {
-				toast.update('Success', 'Order rejected successfully', 'success');
+			if (res.ok) {
+				toast.update('Success', data.message || 'Order rejected successfully', 'success');
 
 				rejection_reason = '';
-
 				rejection_order = null;
+				await loadData();
 			} else {
 				toast.update('Error', data.message || 'Rejection Failed', 'failed');
 			}
@@ -84,11 +129,37 @@
 	}
 
 	async function handleIngest(row) {
-		buttonActive = true;
-		if (!inputsData[row.orderId] || inputsData[row.orderId] <= 0) {
-			toast.update('Error', 'Please enter an amount', 'failed');
+		const inputVal = Number(inputsData[row.orderId]);
+		const role = user.role?.toLowerCase()?.trim();
+
+		if (!inputsData[row.orderId] || isNaN(inputVal) || inputVal <= 0) {
+			toast.update('Error', 'Please enter a valid amount', 'failed');
 			return;
 		}
+
+		if (role === 'lender') {
+			const maxLenderAmount = Number(row.doctorAmountRaw);
+			if (isNaN(maxLenderAmount)) {
+				toast.update('Error', "Doctor's Amount is missing. Cannot approve.", 'failed');
+				return;
+			}
+			if (inputVal > maxLenderAmount) {
+				toast.update('Error', `Amount cannot exceed Doctor's Amount (${maxLenderAmount})`, 'failed');
+				return;
+			}
+		} else {
+			const maxDocAmount = Number(row.requestedAmount);
+			if (isNaN(maxDocAmount)) {
+				toast.update('Error', "Requested Amount is missing.", 'failed');
+				return;
+			}
+			if (inputVal > maxDocAmount) {
+				toast.update('Error', `Amount cannot exceed Requested Amount (${maxDocAmount})`, 'failed');
+				return;
+			}
+		}
+		
+		buttonActive = true;
 		try {
 			const res = await fetch(`${PUBLIC_API_BASE_URL}${baseEndpoint}/submit`, {
 				method: 'POST',
@@ -100,9 +171,11 @@
 			});
 			const data = await res.json();
 			if (res.ok) {
+				const verb = (role === 'lender' || role === 'doctor') ? 'Approved' : 'Ingested';
+				const failVerb = (role === 'lender' || role === 'doctor') ? 'Approval' : 'Ingestion';
 				toast.update(
 					data.statusMessage ? 'Success' : 'Error',
-					data.statusMessage ? 'Order Ingested successfully' : 'Order Ingestion Failed',
+					data.statusMessage ? `Order ${verb} successfully` : `Order ${failVerb} Failed`,
 					data.statusMessage ? 'success' : 'failed'
 				);
 				await loadData();
@@ -110,67 +183,122 @@
 				toast.update('Error', data.message, 'failed');
 			}
 		} catch (e) {
-			toast.update('Error', e, 'failed');
+			toast.update('Error', 'Server connection failed', 'failed');
 		} finally {
-			buttonActive = true;
+			buttonActive = false;
 		}
 	}
 
-	const orderConfig = $state([
-		{
-			label: 'order ID',
-			key: 'orderId',
-			width: '180px', // Increased for long IDs (e.g., UUIDs or MongoIDs)
-			display: 'always',
-			type: 'text',
-			isImportant: true
-			// hasCopy: true
-		},
-		{
-			label: 'Hospital name',
-			key: 'hospitalName',
-			width: '140px', // Standardized for types like "Re-finance" or "Fresh Loan"
-			display: 'always',
-			type: 'text'
-		},
-		{
-			label: 'Borrower',
-			key: 'borrowerName',
-			width: '300px', // Use fixed or large minmax for long names to avoid collision
-			display: 'always',
-			type: 'text'
-		},
-		{
-			label: 'Status',
-			key: 'status',
-			width: '200px', // Names can be long
-			display: 'desktop',
-			type: 'text'
-		},
-		{
-			label: 'Uploaded file',
-			key: 'policyDocument',
-			width: '130px', // Enough for "$1,000,000.00"
-			display: 'always',
-			type: 'url'
-		},
+	let orderConfig = $derived.by(() => {
+		const role = user.role?.toLowerCase()?.trim();
+		const columns = [
+			{
+				label: 'Hospital',
+				key: 'hospitalName',
+				width: '140px',
+				display: 'always',
+				type: 'text',
+				isImportant: true
+			},
+			{
+				label: 'Borrower',
+				key: 'borrowerName',
+				width: '300px',
+				display: 'always',
+				type: 'text'
+			},
+			{
+				label: 'Status',
+				key: 'status',
+				width: '200px',
+				display: 'desktop',
+				type: 'text'
+			},
+			{
+				label: 'Lender',
+				key: 'lenderCode',
+				width: '100px',
+				display: 'always',
+				type: 'tag'
+			},
+			{
+				label: 'Uploaded file',
+				key: 'policyDocument',
+				width: '130px',
+				display: 'always',
+				type: 'url'
+			},
+			{
+				label: 'Requested Amount',
+				key: 'requestedAmountText',
+				width: '140px',
+				display: 'always',
+				type: 'text'
+			}
+		];
 
-		{
-			label: 'Request amound',
-			key: 'requestedAmount',
-			width: '140px',
-			display: 'always',
-			type: 'input',
-			value: '',
-			disable_key: 'is_checked_by_ops'
-		},
-		{
+		if (role === 'doctor') {
+			columns.push({
+				label: "Doctor's Amount",
+				key: 'amount_input',
+				width: '140px',
+				display: 'always',
+				type: 'input',
+				disable_key: 'isCompleted'
+			});
+			columns.push({
+				label: "Lender's Amount",
+				key: 'lenderAmountText',
+				width: '140px',
+				display: 'always',
+				type: 'text'
+			});
+		} else if (role === 'relationship_manager') {
+			let reqAmtCol = columns.find((c) => c.label === 'Requested Amount');
+			if (reqAmtCol) {
+				reqAmtCol.key = 'amount_input';
+				reqAmtCol.type = 'input';
+				reqAmtCol.disable_key = 'rm_disable_input';
+			}
+			columns.push({
+				label: "Doctor's Amount",
+				key: 'doctorAmountText',
+				width: '140px',
+				display: 'always',
+				type: 'text'
+			});
+			columns.push({
+				label: "Lender's Amount",
+				key: 'lenderAmountText',
+				width: '140px',
+				display: 'always',
+				type: 'text'
+			});
+		} else if (role === 'lender') {
+			columns.push({
+				label: "Doctor's Amount",
+				key: 'doctorAmountText',
+				width: '140px',
+				display: 'always',
+				type: 'text'
+			});
+			columns.push({
+				label: "Lender's Amount",
+				key: 'amount_input',
+				width: '140px',
+				display: 'always',
+				type: 'input',
+				disable_key: 'isCompleted'
+			});
+		}
+
+		columns.push({
 			label: 'Action',
-			key: 'is_checked_by_ops',
-			width: '150px', // Space for the action button
+			key: 'isCompleted',
+			width: '150px',
 			display: 'always',
 			type: 'double_action_button',
-			button_one_label: 'Ingest',
+			button_one_label: (role === 'lender' || role === 'doctor') ? 'Approve' : 'Ingest',
 			button_two_label: 'Reject',
 			oneclick_one: (row) => {
 				handleIngest(row);
@@ -178,45 +306,23 @@
 			onclick_two: (row) => {
 				rejection_order = row;
 			}
-		}
-	]);
+		});
+
+		return columns;
+	});
 	// $inspect(inputsData);
 	$effect(async () => {
 		loadData();
 	});
-	async function handleFileClick(e, orderId) {
-    e.preventDefault(); // Prevent default anchor behavior
-    e.stopPropagation(); // Prevent row expansion
+	function handleFileClick(e, url) {
+		e.preventDefault();
+		e.stopPropagation();
 
-	if (fetchingFile) return;
-	fetchingFile = orderId;
-
-    try {
-        const url = await getFileUrl(orderId);
-        if (url) {
-            window.open(url, '_blank', 'noopener,noreferrer');
-        } else {
-            toast.update('Error', 'File URL not found', 'failed');
-        }
-    } catch (err) {
-        console.error("Failed to open file:", err);
-        toast.update('Error', 'Failed to retrieve file', 'failed');
-    } finally {
-		fetchingFile = null;
-	}
-}
-	async function getFileUrl(orderId) {
-		let response = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/${orderId}/policy-url`, {
-			method: 'GET',
-			credentials: "include",
-			headers: {
-			'Content-Type': 'application/json'
-			},
-		});
-		let data = await response.json()
-		console.log(data);
-		return data?.url
-		
+		if (url) {
+			window.open(url, '_blank', 'noopener,noreferrer');
+		} else {
+			toast.update('Error', 'File URL not found', 'failed');
+		}
 	}
 	async function loadData() {
 		const isSearch = value.trim().length > 0;
@@ -247,9 +353,65 @@
 
 			let { orders, totalPages: pageCount } = await response.json();
 			orders = orders.map((order) => {
-				inputsData[order?.orderId] = order.requestedAmount;
+				let isCompleted = false;
+				let actionStatus = 'Completed';
+				const role = user.role?.toLowerCase()?.trim();
+				
+				if (role === 'lender') {
+					isCompleted = order.workflowStage !== 'lender_review';
+					if (isCompleted) {
+						actionStatus = order.workflowStage
+							? order.workflowStage.replace('_', ' ').toUpperCase()
+							: (order.status ? order.status.replace('_', ' ') : 'Pending DOCTOR');
+					}
+				} else if (role === 'relationship_manager') {
+					if (order.lenderCode === 'IFL') {
+						isCompleted = true;
+						actionStatus = order.workflowStage
+							? order.workflowStage.replace('_', ' ').toUpperCase()
+							: 'IFL Order (Read Only)';
+					} else {
+						isCompleted = order.is_checked_by_ops;
+						if (isCompleted) {
+							actionStatus = order.status ? order.status.replace('_', ' ') : 'Ingested';
+						}
+					}
+				} else if (role === 'doctor') {
+					isCompleted = order.workflowStage !== 'doctor_review';
+					if (isCompleted) {
+						actionStatus = order.workflowStage
+							? order.workflowStage.replace('_', ' ').toUpperCase()
+							: (order.status ? order.status.replace('_', ' ') : 'Pending RM Ingestion');
+					}
+				}
+
+				const docAmtRaw = order.doctorActions?.[order.doctorActions.length - 1]?.amount?.$numberDecimal;
+				const lenderAmtRaw = order.lenderActions?.[order.lenderActions.length - 1]?.amount?.$numberDecimal;
+
+				if (role === 'doctor') {
+					inputsData[order?.orderId] = docAmtRaw ? Number(docAmtRaw) : '';
+				} else if (role === 'lender' && isCompleted) {
+					inputsData[order?.orderId] = lenderAmtRaw ? Number(lenderAmtRaw) : order.requestedAmount;
+				} else if ((role === 'lender' || (role === 'relationship_manager' && order.lenderCode !== 'IFL')) && !isCompleted) {
+					inputsData[order?.orderId] = 0;
+				} else {
+					inputsData[order?.orderId] = order.requestedAmount;
+				}
+
+				let rm_disable_input = false;
+				if (role === 'relationship_manager') {
+					rm_disable_input = isCompleted;
+				}
+
 				return {
 					...order,
+					isCompleted,
+					rm_disable_input,
+					actionStatus,
+					requestedAmountText: formatAmount(order.requestedAmount),
+					doctorAmountText: formatAmount(docAmtRaw),
+					lenderAmountText: formatAmount(order.lenderActions?.[order.lenderActions.length - 1]?.amount?.$numberDecimal),
+					doctorAmountRaw: docAmtRaw,
 					created_at: order.created_at
 						? new Date(order.created_at).toLocaleDateString().split('T')[0]
 						: 'N/A',
@@ -355,20 +517,18 @@
 														: 'cursor-pointer'}"
 												>
 													<label class="lg:hidden inline-block text-slate-400 font-semibold text-xs"
-														>amount:</label
+														>{col.label}:</label
 													>
 													<input
 														bind:value={inputsData[row.orderId]}
+														disabled={row[col.disable_key]}
 														onclick={(e) => e.stopPropagation()}
 														type="number"
 														placeholder=""
-														disabled={row[col.disable_key]}
-														class="lg:w-42 w-full py-3 pl-4 pr-6 bg-white border border-slate-200 rounded-2xl outline-none transition-all duration-300
-                   placeholder:text-slate-400 text-slate-900
-                   hover:border-slate-300
-				   disabled:text-gray-400
-				  
-                   focus:border-[#ad5389] focus:ring-4 focus:ring-[#ad5389]/10"
+														class="lg:w-32 w-full py-3 pl-4 pr-6 bg-white border border-slate-200 rounded-2xl outline-none transition-all duration-300
+						   placeholder:text-slate-400 text-slate-900
+						   hover:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100 disabled:cursor-not-allowed
+						   focus:border-[#ad5389] focus:ring-4 focus:ring-[#ad5389]/10"
 													/>
 												</div>
 											{:else if col.type == 'double_action_button'}
@@ -404,33 +564,22 @@
 															/>
 														</button>
 													{:else}
-														<p class="text-slate-400">Already checked</p>
+														<p class="text-slate-400 text-[11px] lg:text-xs font-bold uppercase text-center w-full">{row.actionStatus || 'Completed'}</p>
 													{/if}
 												</div>
 											{:else if col.type === 'url'}
 												<div class="flex flex-col truncate">
-    <button
-        onclick={(e) => handleFileClick(e, row?.orderId)}
-		disabled={fetchingFile === row?.orderId}
-        class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-        <span class="text-sm">
-			{#if fetchingFile === row?.orderId}
-				Loading...
-			{:else}
-				File
-			{/if}
-		</span>
-		{#if fetchingFile === row?.orderId}
-			<Loader size={18} class="animate-spin" />
-		{:else}
-			<ExternalLink
-				size={18}
-				class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
-			/>
-		{/if}
-    </button>
-</div>
+													<button
+														onclick={(e) => { e.stopPropagation(); selected_order_for_files = row; }}
+														class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link"
+													>
+														<span class="text-sm">View Files</span>
+														<ExternalLink
+															size={18}
+															class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
+														/>
+													</button>
+												</div>
 											{:else if row[col.key]}
 												<div
 													class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0"
@@ -534,25 +683,14 @@
 					{#if column.type == 'url'}
 						<div class="flex flex-col truncate">
 							<button
-								onclick={(e) => handleFileClick(e, row?.orderId)}
-								disabled={fetchingFile === row?.orderId}
-								class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link disabled:opacity-50 disabled:cursor-not-allowed"
+								onclick={(e) => { e.stopPropagation(); selected_order_for_files = row; }}
+								class="w-full lg:w-auto shrink-0 flex gap-2 bg-white text-blue-500 font-semibold items-center justify-center py-2 px-4 rounded-xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link"
 							>
-								<span class="text-sm">
-									{#if fetchingFile === row?.orderId}
-										Loading...
-									{:else}
-										File
-									{/if}
-								</span>
-								{#if fetchingFile === row?.orderId}
-									<Loader size={18} class="animate-spin" />
-								{:else}
-									<ExternalLink
-										size={18}
-										class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
-									/>
-								{/if}
+								<span class="text-[13px]">View Files</span>
+								<ExternalLink
+									size={16}
+									class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
+								/>
 							</button>
 						</div>
 					{:else if column.type == 'input'}
@@ -563,16 +701,14 @@
 						>
 							<input
 								bind:value={inputsData[row.orderId]}
+								disabled={row[column.disable_key]}
 								onclick={(e) => e.stopPropagation()}
 								type="number"
 								placeholder=""
-								disabled={row[column.disable_key]}
-								class="w-42 py-3 pl-4 pr-6 bg-white border border-slate-200 rounded-2xl outline-none transition-all duration-300
-                   placeholder:text-slate-400 text-slate-900
-                   hover:border-slate-300
-				   disabled:text-gray-400
-				  
-                   focus:border-[#ad5389] focus:ring-4 focus:ring-[#ad5389]/10"
+								class="w-32 py-2 pl-3 pr-4 bg-white border border-slate-200 rounded-xl outline-none transition-all duration-300 text-sm
+					   placeholder:text-slate-400 text-slate-900
+					   hover:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100 disabled:cursor-not-allowed
+					   focus:border-[#ad5389] focus:ring-4 focus:ring-[#ad5389]/10"
 							/>
 						</div>
 					{:else if column.type == 'double_action_button'}
@@ -584,11 +720,11 @@
 										e.stopPropagation();
 										column.oneclick_one(row);
 									}}
-									class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-4 text-white rounded-2xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one"
+									class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-3 text-white rounded-xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one"
 								>
-									<span class="text-xs">{column.button_one_label}</span>
+									<span class="text-[11px] lg:text-xs">{column.button_one_label}</span>
 									<CheckCircle
-										size={16}
+										size={15}
 										class="group-hover/one:scale-110 transition-transform duration-300"
 									/>
 								</button>
@@ -599,16 +735,16 @@
 										e.stopPropagation();
 										column.onclick_two(row);
 									}}
-									class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-4 rounded-2xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two"
+									class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-3 rounded-xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two"
 								>
-									<span class="text-xs">{column.button_two_label}</span>
+									<span class="text-[11px] lg:text-xs">{column.button_two_label}</span>
 									<XCircle
-										size={16}
+										size={15}
 										class="group-hover/two:rotate-90 transition-transform duration-300"
 									/>
 								</button>
 							{:else}
-								<p class="text-slate-400">Already checked</p>
+								<p class="text-slate-400 text-[11px] lg:text-xs font-bold uppercase text-center w-full">{row.actionStatus || 'Completed'}</p>
 							{/if}
 						</div>
 					{:else if column.type == 'action_button'}
@@ -628,9 +764,21 @@
 								/>
 							</button>
 						</div>
+					{:else if column.type == 'tag'}
+						<div class="flex flex-col truncate">
+							{#if row[column.key]}
+								<span
+									class="inline-flex items-center justify-center px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 rounded-lg w-max"
+								>
+									{row[column.key]}
+								</span>
+							{:else}
+								<span class="truncate text-slate-400 text-[13px] font-semibold lg:font-medium">N/A</span>
+							{/if}
+						</div>
 					{:else}
 						<div class="flex flex-col truncate">
-							<span class="truncate text-slate-700 font-semibold lg:font-medium">
+							<span class="truncate text-slate-700 text-[13px] font-semibold lg:font-medium">
 								{column.key == '_id'
 									? row[column.key]?.length > 10
 										? row[column.key].slice(0, 8) + '...'
@@ -684,6 +832,52 @@
 {#if rejection_order}
 	{@render popUpRejection()}
 {/if}
+
+{#if selected_order_for_files}
+	{@render popUpFiles()}
+{/if}
+
+{#snippet popUpFiles()}
+	<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+		<div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-200 flex w-md flex-col min-h-[500px]">
+			<div class="flex items-center justify-between p-6">
+				<div class="flex flex-col">
+					<h2 class="text-2xl font-bold text-slate-800">Uploaded Documents</h2>
+					<p class="text-sm text-slate-500 font-mono mt-1">{selected_order_for_files?.orderId}</p>
+				</div>
+				<button
+					onclick={() => { selected_order_for_files = null; }}
+					class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-xl transition-colors"
+				>
+					<X size={24} />
+				</button>
+			</div>
+
+			<div class="px-8 pb-8 flex-1">
+				{#if orderDocuments.length > 0}
+					<div class="space-y-4">
+						{#each orderDocuments as doc}
+							<div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-300 transition-colors">
+								<span class="font-semibold text-slate-700">{doc.name}</span>
+								<button
+									onclick={(e) => handleFileClick(e, doc.url)}
+									class="shrink-0 flex gap-2 bg-white text-blue-500 font-semibold items-center justify-center py-2 px-4 rounded-xl border border-slate-200 hover:border-blue-500 cursor-pointer transition-all"
+								>
+									<ExternalLink size={16} />
+									<span class="text-sm">View File</span>
+								</button>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<div class="flex items-center justify-center p-8 bg-slate-50 rounded-xl border border-slate-100 mt-4">
+						<span class="text-slate-500 font-medium tracking-wide">No documents found</span>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/snippet}
 <!-- {#snippet popupClosure(row)}
 	<div class="fixed inset-0 bg-gray-600/40 flex items-center justify-center p-4">
 		<div

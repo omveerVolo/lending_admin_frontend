@@ -10,17 +10,31 @@
 			title: 'text-slate-900',
 			accent: 'bg-emerald-500',
 			border: 'border-slate-200',
+			stroke: 'stroke-emerald-500',
 			icon: CheckSquare
 		},
 		failed: {
 			title: 'text-rose-600',
 			accent: 'bg-rose-500',
 			border: 'border-rose-100',
+			stroke: 'stroke-rose-500',
 			icon: XCircle
 		}
 	};
 
+	// @ts-ignore
 	const theme = $derived(statusThemes[toast.status] || statusThemes.success);
+
+	let timeoutId;
+
+	$effect(() => {
+		if (toast.message) {
+			clearTimeout(timeoutId);
+			timeoutId = setTimeout(() => {
+				toast.clear();
+			}, 8000);
+		}
+	});
 </script>
 
 {#key toast.message}
@@ -56,10 +70,26 @@
 
 				<button
 					onclick={() => toast.clear()}
-					class="p-2 hover:bg-slate-100 cursor-pointer rounded-2xl border border-slate-200 text-slate-900 hover:bg-slate-50 transition-colors flex items-center justify-center group-active:scale-95"
+					class="relative w-10 h-10 hover:bg-slate-100 cursor-pointer rounded-full text-slate-900 transition-colors flex items-center justify-center group-active:scale-95 overflow-hidden"
 				>
+					<svg
+						class="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
+						viewBox="0 0 40 40"
+					>
+						<!-- Static Background Border -->
+						<circle cx="20" cy="20" r="18" fill="none" class="stroke-slate-200" stroke-width="1.5" />
+						
+						<!-- Animated Timed Border -->
+						<circle cx="20" cy="20" r="18" fill="none" class="{theme.stroke} animate-countdown" stroke-width="2"
+							pathLength="100"
+							stroke-dasharray="100"
+							stroke-dashoffset="0"
+						/>
+					</svg>
+
 					<X
-						onclick={() => {
+						onclick={(e) => {
+							e.stopPropagation();
 							toast.clear();
 						}}
 						size={24}
@@ -70,3 +100,20 @@
 		</div>
 	{/if}
 {/key}
+
+<style>
+@reference "tailwindcss";
+
+@keyframes countdown {
+	from {
+		stroke-dashoffset: 0;
+	}
+	to {
+		stroke-dashoffset: 100;
+	}
+}
+
+.animate-countdown {
+	animation: countdown 8s linear forwards;
+}
+</style>

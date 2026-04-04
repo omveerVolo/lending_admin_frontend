@@ -84,7 +84,7 @@
 	}
 	const orderConfig = [
 		{
-			label: 'Hospital name',
+			label: 'Hospital',
 			key: 'name',
 			width: '180px', // Increased for long IDs (e.g., UUIDs or MongoIDs)
 			display: 'always',

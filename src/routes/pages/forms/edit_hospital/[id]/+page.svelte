@@ -62,7 +62,7 @@
 	let step_one = $state([
 		{
 			key: 'name',
-			label: 'Hospital Name',
+			label: 'Hospital',
 			type: 'text',
 			handleChange: (e) => {
 				let value = e.target.value;
