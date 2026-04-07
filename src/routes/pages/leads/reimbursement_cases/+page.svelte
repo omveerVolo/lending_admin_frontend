@@ -8,6 +8,7 @@
 	import {
 		CheckCircle,
 		ChevronRight,
+		ChevronDown,
 		Copy,
 		Edit,
 		ExternalLink,
@@ -40,13 +41,27 @@
 	let inputsData = $state({});
 	let fetchingFile = $state(null);
 	let selected_order_for_files = $state(null);
+	let statusEditOrder = $state(null);
+	let newStatus = $state('');
+	let isStatusDropdownOpen = $state(false);
+	let additionalFiles = $state([]);
+
+	let status_options = [
+		{ value: 'PENDING FOR LENDER', label: 'PENDING FOR LENDER' },
+		{ value: 'APPROVED', label: 'APPROVED' },
+		{ value: 'DISBURSED', label: 'DISBURSED' },
+		{ value: 'REJECTED', label: 'REJECTED' },
+		{ value: 'COMPLETED', label: 'COMPLETED' },
+		{ value: 'ADDITIONAL_DOCUMENTS_REQUIRED', label: 'ADDITIONAL_DOCUMENTS_REQUIRED' }
+	];
 	
 	let orderDocuments = $derived.by(() => {
 		if (!selected_order_for_files) return [];
 		
 		const docs = [];
-		const processDocuments = (documents) => {
-			if (!documents) return;
+		const documents = selected_order_for_files.documents;
+
+		if (documents) {
 			if (documents.policyFile) docs.push({ name: 'Policy Document', url: documents.policyFile });
 			if (documents.prescriptionLetter) docs.push({ name: 'Prescription Letter', url: documents.prescriptionLetter });
 			if (documents.billEstimate) docs.push({ name: 'Bill Estimate', url: documents.billEstimate });
@@ -55,24 +70,11 @@
 					docs.push({ name: `Investigation Document ${i + 1}`, url: url });
 				});
 			}
-		};
-
-		const hasActualDocs = (docsObj) => {
-			if (!docsObj) return false;
-			if (docsObj.policyFile || docsObj.prescriptionLetter || docsObj.billEstimate) return true;
-			if (docsObj.investigationDocuments && docsObj.investigationDocuments.length > 0) return true;
-			return false;
-		};
-
-		const getDocsFromActions = (actions) => {
-			if (!actions || !Array.isArray(actions)) return;
-			const actionWithDocs = actions.slice().reverse().find(a => hasActualDocs(a.documents));
-			if (actionWithDocs) processDocuments(actionWithDocs.documents);
-		};
-
-		getDocsFromActions(selected_order_for_files.doctorActions);
-		if (docs.length === 0) {
-			getDocsFromActions(selected_order_for_files.lenderActions);
+			if (documents.additionalDocuments && Array.isArray(documents.additionalDocuments)) {
+				documents.additionalDocuments.forEach((url, i) => {
+					docs.push({ name: `Additional Document ${i + 1}`, url: url });
+				});
+			}
 		}
 
 		return docs;
@@ -122,6 +124,77 @@
 			}
 		} catch (e) {
 			toast.update('Error', 'Server connection failed', 'failed');
+			console.error(e);
+		} finally {
+			buttonActive = false;
+		}
+	}
+
+	async function updateStatus(order, status) {
+		buttonActive = true;
+		try {
+			const roleKey = user.role?.toLowerCase()?.trim() === 'doctor' ? 'doctor' : 'lender';
+			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					orderId: order?.orderId,
+					key: roleKey,
+					status: status
+				})
+			});
+
+			const data = await res.json();
+
+			if (res.ok) {
+				toast.update('Success', data.message || 'Status updated successfully', 'success');
+
+				newStatus = '';
+				statusEditOrder = null;
+				await loadData();
+			} else {
+				toast.update('Error', data.message || 'Status update failed', 'failed');
+			}
+		} catch (e) {
+			toast.update('Error', 'Server connection failed', 'failed');
+			console.error(e);
+		} finally {
+			buttonActive = false;
+		}
+	}
+
+	async function uploadAdditionalDocs() {
+		if (!additionalFiles || additionalFiles.length === 0) return;
+		buttonActive = true;
+		
+		try {
+			const formData = new FormData();
+			formData.append('orderId', selected_order_for_files.orderId);
+			
+			// const reqRole = selected_order_for_files.workflowStage === 'doctor_review' ? 'doctor' : 'lender';
+			// formData.append('key', reqRole);
+
+			additionalFiles.forEach(f => {
+				formData.append('additionalDocuments', f);
+			});
+
+			const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
+				method: 'POST',
+				credentials: 'include',
+				body: formData
+			});
+
+			const data = await uploadRes.json();
+			if (uploadRes.ok) {
+				toast.update('Success', 'Additional documents uploaded successfully', 'success');
+				additionalFiles = [];
+				selected_order_for_files = null; // Close the modal
+			} else {
+				toast.update('Error', data.message || 'Failed to upload documents', 'failed');
+			}
+		} catch(e) {
+			toast.update('Error', 'Server connection failed while uploading', 'failed');
 			console.error(e);
 		} finally {
 			buttonActive = false;
@@ -212,7 +285,12 @@
 				key: 'status',
 				width: '200px',
 				display: 'desktop',
-				type: 'text'
+				type: 'status_with_edit',
+				hasEdit: role === 'lender' || role === 'doctor',
+				onEdit: (row) => {
+					statusEditOrder = row;
+					newStatus = row.actionStatus || row.status || '';
+				}
 			},
 			{
 				label: 'Lender',
@@ -354,7 +432,7 @@
 			let { orders, totalPages: pageCount } = await response.json();
 			orders = orders.map((order) => {
 				let isCompleted = false;
-				let actionStatus = 'Completed';
+				let actionStatus = null;
 				const role = user.role?.toLowerCase()?.trim();
 				
 				if (role === 'lender') {
@@ -776,6 +854,12 @@
 								<span class="truncate text-slate-400 text-[13px] font-semibold lg:font-medium">N/A</span>
 							{/if}
 						</div>
+					{:else if column.type == 'status_with_edit'}
+						<div class="flex items-center gap-2 truncate">
+							<span class="truncate text-slate-700 text-[13px] font-semibold lg:font-medium">
+								{row.actionStatus || row[column.key] || '—'}
+							</span>
+						</div>
 					{:else}
 						<div class="flex flex-col truncate">
 							<span class="truncate text-slate-700 text-[13px] font-semibold lg:font-medium">
@@ -807,7 +891,7 @@
 								disabled={buttonActive}
 								onclick={(e) => {
 									e.stopPropagation();
-									activateEmailPopUp(row);
+									if (column.onEdit) column.onEdit(row);
 								}}
 								class="p-2 -m-2 text-slate-400 hover:text-[#ad5389] cursor-pointer"
 							>
@@ -836,6 +920,88 @@
 {#if selected_order_for_files}
 	{@render popUpFiles()}
 {/if}
+
+{#if statusEditOrder}
+	{@render popUpStatusEdit()}
+{/if}
+
+{#snippet popUpStatusEdit()}
+	<div
+		class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+	>
+		<div
+			class="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 flex flex-col"
+		>
+			<div class="flex items-center justify-between p-6">
+				<div class="flex flex-col">
+					<h2 class="text-2xl font-bold text-slate-800">Edit Status</h2>
+					<p class="text-sm text-slate-500 font-mono mt-1">{statusEditOrder?.orderId}</p>
+				</div>
+				<button
+					onclick={() => {
+						statusEditOrder = null;
+					}}
+					class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-xl transition-colors"
+				>
+					<X size={24} />
+				</button>
+			</div>
+
+			<div class="px-8 pb-8 flex-1" class:disabled-style={buttonActive}>
+				<div class="space-y-6">
+					<div class="animate-in fade-in slide-in-from-top-2">
+						<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+							New Status
+						</label>
+						<div class="relative w-full">
+							<button
+								type="button"
+								onclick={() => (isStatusDropdownOpen = !isStatusDropdownOpen)}
+								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 flex justify-between items-center"
+							>
+								<span class="font-medium">
+									{newStatus ? status_options.find(o => o.value === newStatus)?.label || newStatus : 'Select a status...'}
+								</span>
+								<ChevronDown size={18} class="text-slate-400 transition-transform {isStatusDropdownOpen ? 'rotate-180' : ''}" />
+							</button>
+
+							{#if isStatusDropdownOpen}
+								<div role="presentation" class="fixed inset-0 z-40" onclick={() => (isStatusDropdownOpen = false)}></div>
+								
+								<div class="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto overflow-x-hidden">
+									{#each status_options as opt}
+										<button
+											type="button"
+											class="w-full text-left px-5 py-4 hover:bg-slate-50/80 transition-colors border-b border-slate-50 last:border-0 text-slate-700 font-medium {newStatus === opt.value ? 'bg-slate-50/80 text-[#ad5389]' : ''}"
+											onclick={() => {
+												newStatus = opt.value;
+												isStatusDropdownOpen = false;
+											}}
+										>
+											{opt.label}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div
+				class="flex items-center justify-around gap-3 p-6 bg-slate-50/50 border-t border-slate-100 rounded-b-2xl"
+			>
+				<button
+					disabled={buttonActive || !newStatus}
+					class="group flex items-center justify-center gap-2 py-4 px-6 rounded-2xl bg-slate-900 text-white hover:bg-white hover:text-[#ad5389] border hover:border-[#ad5389] transition-all cursor-pointer w-full shadow-lg shadow-blue-900/10 disabled:opacity-50"
+					onclick={() => updateStatus(statusEditOrder, newStatus)}
+				>
+					Update Status
+				</button>
+			</div>
+		</div>
+	</div>
+{/snippet}
 
 {#snippet popUpFiles()}
 	<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -872,6 +1038,32 @@
 				{:else}
 					<div class="flex items-center justify-center p-8 bg-slate-50 rounded-xl border border-slate-100 mt-4">
 						<span class="text-slate-500 font-medium tracking-wide">No documents found</span>
+					</div>
+				{/if}
+
+				{#if (selected_order_for_files?.actionStatus === 'ADDITIONAL DOCUMENTS REQUIRED' || selected_order_for_files?.actionStatus === 'ADDITIONAL_DOCUMENTS_REQUIRED' || selected_order_for_files?.status === 'ADDITIONAL_DOCUMENTS_REQUIRED') && user.role?.toLowerCase()?.trim() === 'relationship_manager'}
+					<div class="mt-8 border-t border-slate-200 pt-6">
+						<h3 class="text-lg font-bold text-slate-800 mb-4 tracking-tight">Upload Additional Documents</h3>
+						<input
+							type="file"
+							multiple
+							accept=".pdf,.png,.jpg,.jpeg"
+							onchange={(e) => {
+								const files = Array.from(e.target.files);
+								if (files.length > 10) {
+									toast.update('Warning', 'Maximum 10 files allowed. Extra files were ignored.', 'failed');
+								}
+								additionalFiles = files.slice(0, 10);
+							}}
+							class="block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:transition-colors mb-4 focus:outline-none"
+						/>
+						<button
+							disabled={additionalFiles.length === 0 || buttonActive}
+							onclick={uploadAdditionalDocs}
+							class="w-full shrink-0 flex gap-2 bg-[#ad5389] text-white font-semibold items-center justify-center py-3 px-6 rounded-xl border border-transparent hover:bg-[#8f4170] cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+						>
+							Upload {additionalFiles.length} File{additionalFiles.length !== 1 ? 's' : ''} (Max 10)
+						</button>
 					</div>
 				{/if}
 			</div>
