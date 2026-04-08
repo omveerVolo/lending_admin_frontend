@@ -45,15 +45,53 @@
 	let newStatus = $state('');
 	let isStatusDropdownOpen = $state(false);
 	let additionalFiles = $state([]);
+	let statusFormData = $state({
+		loanAmount: '',
+		prefBankAccount: '',
+		prefIfsc: '',
+		podNumber: '',
+		utrNumber: '',
+		partialDisbursedAmount: '',
+		finalUtrNumber: '',
+		finalDisbursalAmount: ''
+	});
 
-	let status_options = [
-		{ value: 'PENDING FOR LENDER', label: 'PENDING FOR LENDER' },
-		{ value: 'APPROVED', label: 'APPROVED' },
-		{ value: 'DISBURSED', label: 'DISBURSED' },
-		{ value: 'REJECTED', label: 'REJECTED' },
-		{ value: 'COMPLETED', label: 'COMPLETED' },
-		{ value: 'ADDITIONAL_DOCUMENTS_REQUIRED', label: 'ADDITIONAL_DOCUMENTS_REQUIRED' }
-	];
+	let status_options = $derived.by(() => {
+		const role = user.role?.toLowerCase()?.trim();
+		let options = [];
+		if (role === 'doctor') {
+			options = ['approved', 'rejected', 'additional_documents_required'];
+		} else if (role === 'lender') {
+			options = [
+				'additional_documents_required',
+				'approved',
+				'kyc_done',
+				'nach_setup',
+				'bill_upload_required',
+				'do_released',
+				'partial_disbursal',
+				'emi_started_by_customer',
+				'disbursed',
+				'amount_paid_by_customer',
+				'complete_disbursal',
+				'emi_bounced_by_1_month',
+				'emi_bounced_by_3_month',
+				'npa'
+			];
+		}
+		
+		return options.map(opt => ({
+			value: opt,
+			label: opt.split('_').map(word => {
+				if (word.toLowerCase() === 'kyc') return 'KYC';
+				if (word.toLowerCase() === 'nach') return 'NACH';
+				if (word.toLowerCase() === 'do') return 'DO';
+				if (word.toLowerCase() === 'emi') return 'EMI';
+				if (word.toLowerCase() === 'npa') return 'NPA';
+				return word.charAt(0).toUpperCase() + word.slice(1);
+			}).join(' ')
+		}));
+	});
 	
 	let orderDocuments = $derived.by(() => {
 		if (!selected_order_for_files) return [];
@@ -93,6 +131,31 @@
 	function onPageChange(newPage) {
 		currentPage = newPage;
 	}
+	let isFormValidForStatus = $derived.by(() => {
+		if (!newStatus || newStatus === '') return true; // valid if just nothing is selected
+		
+		if (newStatus === 'kyc_done' || newStatus === 'kyc') {
+			if (!statusFormData.loanAmount) return false;
+			const docAmtRaw = statusEditOrder?.doctorActions?.[statusEditOrder.doctorActions.length - 1]?.amount?.$numberDecimal;
+			if (Number(statusFormData.loanAmount) > Number(docAmtRaw)) return false;
+		} else if (newStatus === 'nach_setup') {
+			if (!statusFormData.prefBankAccount || !statusFormData.prefIfsc) return false;
+		} else if (newStatus === 'do_released' || newStatus === 'do_release') {
+			if (!statusFormData.podNumber) return false;
+		} else if (newStatus === 'partial_disbursal') {
+			if (!statusFormData.utrNumber || !statusFormData.partialDisbursedAmount) return false;
+			const loanAmt = Number(statusEditOrder?.kyc?.loan_amount || statusEditOrder?.kyc_done?.loan_amount || statusEditOrder?.requestedAmount || 0);
+			if (Number(statusFormData.partialDisbursedAmount) >= loanAmt) return false;
+		} else if (newStatus === 'complete_disbursal') {
+			if (!statusFormData.finalUtrNumber || !statusFormData.finalDisbursalAmount) return false;
+			const loanAmt = Number(statusEditOrder?.kyc?.loan_amount || statusEditOrder?.kyc_done?.loan_amount || statusEditOrder?.requestedAmount || 0);
+			const partialAmt = Number(statusEditOrder?.partial_disbursal?.partial_disbursed_amount || 0);
+			if ((partialAmt + Number(statusFormData.finalDisbursalAmount)) >= loanAmt) return false;
+		}
+		
+		return true;
+	});
+
 	async function handleReject() {
 		if (!rejection_reason) {
 			toast.update('Error', 'Please provide a rejection reason', 'failed');
@@ -134,15 +197,33 @@
 		buttonActive = true;
 		try {
 			const roleKey = user.role?.toLowerCase()?.trim() === 'doctor' ? 'doctor' : 'lender';
+			
+			const payload = {
+				orderId: order?.orderId,
+				key: roleKey,
+				status: status
+			};
+
+			if (status === 'kyc_done' || status === 'kyc') {
+				payload.loan_amount = Number(statusFormData.loanAmount);
+			} else if (status === 'nach_setup') {
+				payload.preferred_bank_account = statusFormData.prefBankAccount;
+				payload.preferred_ifsc = statusFormData.prefIfsc;
+			} else if (status === 'do_released' || status === 'do_release') {
+				payload.pod_number = statusFormData.podNumber;
+			} else if (status === 'partial_disbursal') {
+				payload.utr_number = statusFormData.utrNumber;
+				payload.partial_disbursed_amount = Number(statusFormData.partialDisbursedAmount);
+			} else if (status === 'complete_disbursal') {
+				payload.final_utr_number = statusFormData.finalUtrNumber;
+				payload.final_disbursal_amount = Number(statusFormData.finalDisbursalAmount);
+			}
+
 			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					orderId: order?.orderId,
-					key: roleKey,
-					status: status
-				})
+				body: JSON.stringify(payload)
 			});
 
 			const data = await res.json();
@@ -289,7 +370,7 @@
 				hasEdit: role === 'lender' || role === 'doctor',
 				onEdit: (row) => {
 					statusEditOrder = row;
-					newStatus = row.actionStatus || row.status || '';
+					newStatus = (row.status || '').toLowerCase();
 				}
 			},
 			{
@@ -438,28 +519,28 @@
 				if (role === 'lender') {
 					isCompleted = order.workflowStage !== 'lender_review';
 					if (isCompleted) {
-						actionStatus = order.workflowStage
-							? order.workflowStage.replace('_', ' ').toUpperCase()
-							: (order.status ? order.status.replace('_', ' ') : 'Pending DOCTOR');
+						actionStatus = order.status
+							? order.status.replace(/_/g, ' ').toUpperCase()
+							: 'N/A';
 					}
 				} else if (role === 'relationship_manager') {
 					if (order.lenderCode === 'IFL') {
 						isCompleted = true;
-						actionStatus = order.workflowStage
-							? order.workflowStage.replace('_', ' ').toUpperCase()
-							: 'IFL Order (Read Only)';
+						actionStatus = order.status
+							? order.status.replace(/_/g, ' ').toUpperCase()
+							: 'N/A';
 					} else {
 						isCompleted = order.is_checked_by_ops;
 						if (isCompleted) {
-							actionStatus = order.status ? order.status.replace('_', ' ') : 'Ingested';
+							actionStatus = order.status ? order.status.replace(/_/g, ' ').toUpperCase() : 'N/A';
 						}
 					}
 				} else if (role === 'doctor') {
 					isCompleted = order.workflowStage !== 'doctor_review';
 					if (isCompleted) {
-						actionStatus = order.workflowStage
-							? order.workflowStage.replace('_', ' ').toUpperCase()
-							: (order.status ? order.status.replace('_', ' ') : 'Pending RM Ingestion');
+						actionStatus = order.status
+							? order.status.replace(/_/g, ' ').toUpperCase()
+							: 'N/A';
 					}
 				}
 
@@ -985,6 +1066,114 @@
 							{/if}
 						</div>
 					</div>
+					{#if newStatus === 'kyc_done' || newStatus === 'kyc'}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
+							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+								Loan Amount
+							</label>
+							<input
+								type="number"
+								bind:value={statusFormData.loanAmount}
+								placeholder="Enter Loan Amount"
+								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+							/>
+						</div>
+					{/if}
+
+					{#if newStatus === 'nach_setup'}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4 space-y-4">
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Preferred Bank Account
+								</label>
+								<input
+									type="text"
+									bind:value={statusFormData.prefBankAccount}
+									placeholder="Enter Account Number"
+									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+								/>
+							</div>
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Preferred IFSC
+								</label>
+								<input
+									type="text"
+									bind:value={statusFormData.prefIfsc}
+									placeholder="Enter IFSC Code"
+									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 uppercase"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					{#if newStatus === 'do_released' || newStatus === 'do_release'}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
+							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+								POD Number
+							</label>
+							<input
+								type="text"
+								bind:value={statusFormData.podNumber}
+								placeholder="Enter POD Number"
+								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+							/>
+						</div>
+					{/if}
+
+					{#if newStatus === 'partial_disbursal'}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4 space-y-4">
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									UTR Number
+								</label>
+								<input
+									type="text"
+									bind:value={statusFormData.utrNumber}
+									placeholder="Enter UTR Number"
+									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+								/>
+							</div>
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Partial Disbursed Amount
+								</label>
+								<input
+									type="number"
+									bind:value={statusFormData.partialDisbursedAmount}
+									placeholder="Enter Amount"
+									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					{#if newStatus === 'complete_disbursal'}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4 space-y-4">
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Final UTR Number
+								</label>
+								<input
+									type="text"
+									bind:value={statusFormData.finalUtrNumber}
+									placeholder="Enter Final UTR Number"
+									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+								/>
+							</div>
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Final Disbursal Amount
+								</label>
+								<input
+									type="number"
+									bind:value={statusFormData.finalDisbursalAmount}
+									placeholder="Enter Amount"
+									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+								/>
+							</div>
+						</div>
+					{/if}
 				</div>
 			</div>
 
@@ -992,7 +1181,7 @@
 				class="flex items-center justify-around gap-3 p-6 bg-slate-50/50 border-t border-slate-100 rounded-b-2xl"
 			>
 				<button
-					disabled={buttonActive || !newStatus}
+					disabled={buttonActive || !newStatus || !isFormValidForStatus}
 					class="group flex items-center justify-center gap-2 py-4 px-6 rounded-2xl bg-slate-900 text-white hover:bg-white hover:text-[#ad5389] border hover:border-[#ad5389] transition-all cursor-pointer w-full shadow-lg shadow-blue-900/10 disabled:opacity-50"
 					onclick={() => updateStatus(statusEditOrder, newStatus)}
 				>
