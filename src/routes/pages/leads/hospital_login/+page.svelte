@@ -195,12 +195,12 @@
 				...hospital,
 				created_at: hospital.created_at
 					? new Date(hospital.created_at).toLocaleDateString().split('T')[0]
-					: 'N/A',
+					: '-',
 				// order_status: hospital.status.leadStatus,
 				relationship_manager: hospital.relationshipManager.email,
 				order_closure: hospital.OrderClosure || false,
-				status: hospital.status?.esStatus || 'N/A',
-				disbursedAmount: hospital.status?.disbursedAmount?.$numberDecimal || 'N/A'
+				status: hospital.status?.esStatus || '-',
+				disbursedAmount: hospital.status?.disbursedAmount?.$numberDecimal || '-'
 			}));
 			totalPages = pageCount || 1;
 			console.log(totalPages);

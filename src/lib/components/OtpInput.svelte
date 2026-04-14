@@ -36,13 +36,17 @@
 
 	function onpaste(e) {
 		e.preventDefault();
-		const data = e.clipboardData.getData('text').slice(0, length).split('');
+		const data = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length).split('');
 		data.forEach((char, index) => {
 			if (index < length) otp[index] = char;
 		});
 
 		const nextIndex = Math.min(data.length, length - 1);
-		inputs[nextIndex].focus();
+		inputs[nextIndex]?.focus();
+
+		if (otp.join('').length === length) {
+			onComplete?.(otp.join(''));
+		}
 	}
 </script>
 

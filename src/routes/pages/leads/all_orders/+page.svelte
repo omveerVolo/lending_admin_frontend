@@ -168,11 +168,11 @@
 				...order,
 				created_at: order.created_at
 					? new Date(order.created_at).toLocaleDateString().split('T')[0]
-					: 'N/A',
-				order_status: order.status?.leadStatus || 'N/A',
+					: '-',
+				order_status: order.status?.leadStatus || '-',
 				order_closure: order.OrderClosure || false,
-				status: order.status?.esStatus || 'N/A',
-				disbursedAmount: order.status?.disbursedAmount?.$numberDecimal || 'N/A'
+				status: order.status?.esStatus || '-',
+				disbursedAmount: order.status?.disbursedAmount?.$numberDecimal || '-'
 			}));
 			totalPages = pageCount || 1;
 			console.log(totalPages);

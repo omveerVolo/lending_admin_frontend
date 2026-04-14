@@ -303,7 +303,7 @@
 						<div
 							class="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-600 text-sm font-medium"
 						>
-							{row.name || row.hospitalName || 'N/A'}
+							{row.name || row.hospitalName || '-'}
 						</div>
 					</div>
 					<div class="flex flex-col gap-1">
@@ -313,7 +313,7 @@
 						<div
 							class="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-600 text-sm font-medium truncate"
 						>
-							{row.hospital || 'N/A'}
+							{row.hospital || '-'}
 						</div>
 					</div>
 				</div>
