@@ -461,8 +461,17 @@
 	}
 
 	async function submitRmUpload() {
-		if (!rmUploadFormData.cancelledCheque || !rmUploadFormData.finalBill || rmUploadFormData.cancelledCheque.length === 0 || rmUploadFormData.finalBill.length === 0) {
-			toast.update('Error', 'Please provide both Cancelled Cheque and Final Bill files', 'failed');
+		const hasExistingCheque = !!rmUploadOrder?.documents?.lenderDoc?.cancelledCheque;
+		const isNewChequeUploaded = rmUploadFormData.cancelledCheque && rmUploadFormData.cancelledCheque.length > 0;
+		const isFinalBillUploaded = rmUploadFormData.finalBill && rmUploadFormData.finalBill.length > 0;
+
+		if (!isFinalBillUploaded) {
+			toast.update('Error', 'Please provide the Final Bill file', 'failed');
+			return;
+		}
+
+		if (!hasExistingCheque && !isNewChequeUploaded) {
+			toast.update('Error', 'Please provide the Cancelled Cheque file', 'failed');
 			return;
 		}
 		
@@ -471,7 +480,10 @@
 			const formData = new FormData();
 			formData.append('orderId', rmUploadOrder.orderId);
 			formData.append('key', 'lender');
-			formData.append('cancelledCheque', rmUploadFormData.cancelledCheque[0]);
+			
+			if (isNewChequeUploaded) {
+				formData.append('cancelledCheque', rmUploadFormData.cancelledCheque[0]);
+			}
 			formData.append('finalBill', rmUploadFormData.finalBill[0]);
 
 			const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
@@ -868,7 +880,12 @@
 				}
 				const lenderRawStatus = rawLenderStatus;
 
-				if ((order.status || '').toLowerCase().includes('reject') || (rawRoleStatus || '').toLowerCase().includes('reject')) {
+				const isRejected = (order.status || '').toLowerCase().includes('reject') || 
+								   (rawRoleStatus || '').toLowerCase().includes('reject') ||
+								   rawDocStatus.includes('reject') ||
+								   rawLenderStatus.includes('reject');
+
+				if (isRejected) {
 					isCompleted = true;
 				}
 
@@ -899,6 +916,7 @@
 				return {
 					...order,
 					isCompleted,
+					isRejected,
 					rm_disable_input,
 					doctor_disable_input,
 					actionStatus,
@@ -1246,65 +1264,71 @@
 						</div>
 					{:else if column.type == 'double_action_button'}
 						<div class="flex items-center gap-2">
-							{#if user.role === 'relationship_manager' && row.lenderCode === 'IFL' && ((row.rawRoleStatus || '').toLowerCase().replace(/ /g, '_') === 'bill_upload_required' || (row.doctorActions?.[row.doctorActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_') === 'reupload_bill') && !row.doctorActions?.some((a) => (a.status || '').replace(/ /g, '_').toLowerCase() === 'bill_uploaded')}
-								<button
-									disabled={buttonActive}
-									onclick={(e) => {
-										e.stopPropagation();
-										rmUploadOrder = row;
-									}}
-									class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-[#ad5389] hover:bg-white hover:text-[#ad5389] hover:border-[#ad5389] text-white font-bold items-center justify-center py-2 px-3 rounded-xl cursor-pointer border border-transparent transition-all disabled:opacity-50 shadow-md"
-								>
-									<span class="text-[11px] lg:text-xs">Upload Bill</span>
-									<Upload size={15} />
-								</button>
-							{:else if user.role === 'doctor' && row.rawRoleStatus === 'bill_uploaded'}
-								<button
-									disabled={buttonActive}
-									onclick={(e) => {
-										e.stopPropagation();
-										billVerifyOrder = row;
-									}}
-									class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-3 text-white rounded-xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one disabled:opacity-50 shadow-md"
-								>
-									<span class="text-[11px] lg:text-xs">Verify Bill</span>
-									<CheckCircle size={15} class="group-hover/one:scale-110 transition-transform duration-300" />
-								</button>
-							{:else if !row[column.key]}
-								<button
-									disabled={buttonActive}
-									onclick={(e) => {
-										e.stopPropagation();
-										column.oneclick_one(row);
-									}}
-									class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-3 text-white rounded-xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one disabled:opacity-50 disabled:cursor-not-allowed"
-								>
-									<span class="text-[11px] lg:text-xs">{column.button_one_label}</span>
-									<CheckCircle
-										size={15}
-										class="group-hover/one:scale-110 transition-transform duration-300"
-									/>
-								</button>
+							{#if !row.isRejected}
+								{#if user.role === 'relationship_manager' && row.lenderCode === 'IFL' && ((row.rawRoleStatus || '').toLowerCase().replace(/ /g, '_') === 'bill_upload_required' || (row.doctorActions?.[row.doctorActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_') === 'reupload_bill') && !row.doctorActions?.some((a) => (a.status || '').replace(/ /g, '_').toLowerCase() === 'bill_uploaded')}
+									<button
+										disabled={buttonActive}
+										onclick={(e) => {
+											e.stopPropagation();
+											rmUploadOrder = row;
+										}}
+										class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-[#ad5389] hover:bg-white hover:text-[#ad5389] hover:border-[#ad5389] text-white font-bold items-center justify-center py-2 px-3 rounded-xl cursor-pointer border border-transparent transition-all disabled:opacity-50 shadow-md"
+									>
+										<span class="text-[11px] lg:text-xs">Upload Bill</span>
+										<Upload size={15} />
+									</button>
+								{:else if user.role === 'doctor' && row.rawRoleStatus === 'bill_uploaded'}
+									<button
+										disabled={buttonActive}
+										onclick={(e) => {
+											e.stopPropagation();
+											billVerifyOrder = row;
+										}}
+										class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-3 text-white rounded-xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one disabled:opacity-50 shadow-md"
+									>
+										<span class="text-[11px] lg:text-xs">Verify Bill</span>
+										<CheckCircle size={15} class="group-hover/one:scale-110 transition-transform duration-300" />
+									</button>
+								{:else if !row[column.key]}
+									<button
+										disabled={buttonActive}
+										onclick={(e) => {
+											e.stopPropagation();
+											column.oneclick_one(row);
+										}}
+										class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-2 px-3 text-white rounded-xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group/one disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										<span class="text-[11px] lg:text-xs">{column.button_one_label}</span>
+										<CheckCircle
+											size={15}
+											class="group-hover/one:scale-110 transition-transform duration-300"
+										/>
+									</button>
 
-								<button
-									disabled={buttonActive}
-									onclick={(e) => {
-										e.stopPropagation();
-										column.onclick_two(row);
-									}}
-									class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-3 rounded-xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two disabled:opacity-50 disabled:cursor-not-allowed"
-								>
-									<span class="text-[11px] lg:text-xs">{column.button_two_label}</span>
-									<XCircle
-										size={15}
-										class="group-hover/two:rotate-90 transition-transform duration-300"
-									/>
-								</button>
+									<button
+										disabled={buttonActive}
+										onclick={(e) => {
+											e.stopPropagation();
+											column.onclick_two(row);
+										}}
+										class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-3 rounded-xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										<span class="text-[11px] lg:text-xs">{column.button_two_label}</span>
+										<XCircle
+											size={15}
+											class="group-hover/two:rotate-90 transition-transform duration-300"
+										/>
+									</button>
+								{:else}
+									<p
+										class="text-slate-400 text-[11px] lg:text-xs font-bold uppercase text-center w-full"
+									>
+										{row.actionStatus || 'Completed'}
+									</p>
+								{/if}
 							{:else}
-								<p
-									class="text-slate-400 text-[11px] lg:text-xs font-bold uppercase text-center w-full"
-								>
-									{row.actionStatus || 'Completed'}
+								<p class="text-red-400 text-[11px] lg:text-xs font-bold uppercase text-center w-full">
+									Rejected
 								</p>
 							{/if}
 						</div>
@@ -1383,7 +1407,7 @@
 
 						{#if column.hasEdit}
 							{@const editCheckStatus = (user.role === 'lender' && row.lenderRawStatus) ? row.lenderRawStatus : (row.rawRoleStatus || '').toLowerCase()}
-							{@const isStatusDisabled = ['completed', 'complete', 'reject', 'rejected', 'complete_settled', 'npa', 'settled', 'doctor_approved', 'doctor_rejected', 'bill_verified', 'bill_rejected'].includes(
+							{@const isStatusDisabled = row.isRejected || ['completed', 'complete', 'reject', 'rejected', 'complete_settled', 'npa', 'settled', 'doctor_approved', 'doctor_rejected', 'bill_verified', 'bill_rejected'].includes(
 								editCheckStatus
 							) || (row.lenderActions || []).some(action => ['complete_settled', 'npa', 'settled'].includes((action.status || '').toLowerCase()))}
 							<button
