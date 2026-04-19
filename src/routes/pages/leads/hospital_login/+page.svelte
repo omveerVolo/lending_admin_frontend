@@ -306,7 +306,7 @@
 												>
 													<div class="flex flex-col min-w-0">
 														<span
-															class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1"
+															class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1"
 														>
 															{col.label || col.key}
 														</span>

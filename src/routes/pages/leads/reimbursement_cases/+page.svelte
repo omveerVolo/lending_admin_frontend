@@ -56,6 +56,17 @@
 		finalBill: null
 	});
 	let billVerifyOrder = $state(null);
+	let podEnterOrder = $state(null);
+	let podInputNumber = $state('');
+	
+	let claimEditOrder = $state(null);
+	let newClaimStatus = $state('');
+	let newClaimAmount = $state('');
+	let isClaimStatusDropdownOpen = $state(false);
+	const claim_status_options = [
+		{ value: 'settled', label: 'Settled' },
+		
+	];
 
 	let billDocs = $derived.by(() => {
 		const docs = billVerifyOrder?.documents || {};
@@ -104,10 +115,10 @@
 					'do_released',
 					'partial_disbursed',
 					"partial_settled",
-					'emi_started_by_customer',
+					'emi_started',
 					'disbursed',
 					'settled',
-					'amount_paid_by_customer',
+					'full_amount_paid',
 					'emi_bounced_by_1month',
 					'emi_bounced_by_3months',
 					'npa'
@@ -116,24 +127,58 @@
 				// options = ['rejected', ...statusFlow];
 				options = [ ...statusFlow];
 
-				const resolvedStatus = (statusEditOrder?.rawRoleStatus || currentStatus).toLowerCase();
-				let flowIndex = statusFlow.indexOf(resolvedStatus);
-                // Also check if any lenderAction matches
-                if (flowIndex === -1 && statusEditOrder?.lenderActions) {
-                    for (let i = statusEditOrder.lenderActions.length - 1; i >= 0; i--) {
-                        const idx = statusFlow.indexOf((statusEditOrder.lenderActions[i].status || '').toLowerCase());
-                        if (idx !== -1) {
-                            flowIndex = idx;
-                            break;
-                        }
-                    }
-                }
+				const validTransitions = {
+					'': ['additional_documents_required', 'kyc_done', 'nach_setup', 'bill_upload_required'], // fallbacks for early stages
+					'additional_documents_required': ['kyc_done', 'nach_setup', 'bill_upload_required'],
+					'kyc_done': ['nach_setup', 'additional_documents_required'],
+					'nach_setup': ['bill_upload_required', 'additional_documents_required'],
+					'bill_upload_required': ['do_released'],
+					'do_released': ['partial_disbursed'],
+					'partial_disbursed': ['partial_settled'],
+					'partial_settled': [
+						'emi_started',
+						'full_amount_paid',
+						
+					],
+					'emi_started': ['emi_bounced_by_1month',
+						'emi_bounced_by_3months',"full_amount_paid"],
+					'full_amount_paid': ['disbursed'],
+					'disbursed': ['settled'],
+					'emi_bounced_by_1month': [
+						'emi_bounced_by_3months','npa'],
+					'emi_bounced_by_3months': ['npa'],
+					'settled': ['end'],
+					'npa': ['end'],
+				};
 
-				if (flowIndex !== -1) {
-					for (let i = 0; i <= flowIndex; i++) {
-						disabledOptions.add(statusFlow[i]);
+				const resolvedStatus = (statusEditOrder?.rawRoleStatus || currentStatus).toLowerCase();
+				let currentMachineStatus = resolvedStatus;
+
+				// If the status isn't matched directly, look back through lenderActions for highest matched stage
+				if (!validTransitions[currentMachineStatus] && statusEditOrder?.lenderActions) {
+					for (let i = statusEditOrder.lenderActions.length - 1; i >= 0; i--) {
+						const actionStatus = (statusEditOrder.lenderActions[i].status || '').toLowerCase();
+						if (validTransitions[actionStatus]) {
+							currentMachineStatus = actionStatus;
+							break;
+						}
 					}
 				}
+
+				let allowedNextStates = validTransitions[currentMachineStatus] || validTransitions[''];
+				
+				if (currentMachineStatus === 'do_released') {
+					const doReleasedAction = statusEditOrder?.lenderActions?.filter(a => (a.status || '').toLowerCase() === 'do_released').pop();
+					if (doReleasedAction && doReleasedAction.podCaptured === false) {
+						allowedNextStates = []; // Block progression until POD is captured
+					}
+				}
+				
+				statusFlow.forEach(status => {
+					if (!allowedNextStates.includes(status)) {
+						disabledOptions.add(status);
+					}
+				});
 			} else {
 				// options = ['rejected', 'additional_documents_required'];
 				options = ['additional_documents_required'];
@@ -179,7 +224,8 @@
 
 		function hasValidDocuments(obj) {
 			if (!obj) return false;
-			for (const value of Object.values(obj)) {
+			for (const [key, value] of Object.entries(obj)) {
+				if (key === 'additionalDocuments') return true;
 				if (Array.isArray(value) && value.length > 0) return true;
 				if (typeof value === 'string' && value.trim() !== '') return true;
 				if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -192,16 +238,17 @@
 		function processDocNode(docObject, currentBucket = null) {
 			if (!docObject) return;
 			for (const [key, value] of Object.entries(docObject)) {
-				if (!value) continue;
+				if (!value && key !== 'additionalDocuments') continue;
 
-				if (Array.isArray(value)) {
-					if (value.length === 0) continue;
+				if (Array.isArray(value) || key === 'additionalDocuments') {
+					let safeValue = value || [];
+					if (safeValue.length === 0 && key !== 'additionalDocuments') continue;
 					
 					const formattedKey = key.replace(/([A-Z])/g, ' $1').trim();
 					const finalName = formattedKey.charAt(0).toUpperCase() + formattedKey.slice(1);
 					
 					let arrDocs = [];
-					value.forEach((url, i) => {
+					safeValue.forEach((url, i) => {
 						if (url) {
 							arrDocs.push({ name: `Document ${i + 1}`, url: url });
 						}
@@ -241,6 +288,29 @@
 
 		return docs;
 	});
+
+	function canReplaceDocument(docBucket) {
+		if (user?.role?.toLowerCase()?.trim() !== 'relationship_manager') return false;
+		if (!selected_order_for_files) return false;
+
+		const lenderRawStatus = (selected_order_for_files.lenderActions?.[selected_order_for_files.lenderActions.length - 1]?.status || selected_order_for_files.status || '').toLowerCase().replace(/ /g, '_');
+		if (['complete_settled', 'npa', 'settled'].includes(lenderRawStatus) || selected_order_for_files.isRejected) {
+			return false;
+		}
+
+		const doctorRawStatus = (selected_order_for_files.doctorActions?.[selected_order_for_files.doctorActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_');
+		const docRequires = ['additional_documents_required'].includes(doctorRawStatus);
+		const lenderRequires = ['additional_documents_required'].includes(lenderRawStatus);
+
+		if (docRequires || lenderRequires) {
+			if (docBucket === 'doctor') return docRequires;
+			if (docBucket === 'lender') return lenderRequires;
+			return false;
+		}
+
+		// Strictly only show replace buttons when actual documents are requested via 'additional_documents_required'
+		return false;
+	}
 
 	function formatAmount(amt) {
 		if (amt === '-' || amt === undefined || amt === null || amt === '') return '-';
@@ -311,14 +381,12 @@
 		} else if (newStatus === 'partial_settled') {
 			if (!statusFormData.utrNumber) return false;
 		} else if (newStatus === 'do_released' || newStatus === 'do_release') {
-			return true
+			if (!statusFormData.doDocument || statusFormData.doDocument.length === 0) return false;
+			return true;
 		} else if (newStatus === 'partial_disbursal' || newStatus === 'partial_disbursed') {
-			if (!statusFormData.partialDisbursedAmount) return false;
-			if (maxAllowedLoanAmount > 0 && Number(statusFormData.partialDisbursedAmount) > maxAllowedLoanAmount) return false;
+			return true
 		} else if (newStatus === 'complete_disbursal' || newStatus === 'disbursed') {
-			if (!statusFormData.finalDisbursalAmount) return false;
-			const partialAmt = computedPartialDisbursedAmount;
-			if (partialAmt + Number(statusFormData.finalDisbursalAmount) > maxAllowedLoanAmount) return false;
+			return true;
 		} else if (newStatus === 'settled') {
 			if (!statusFormData.finalUtrNumber) return false;
 		}
@@ -326,8 +394,84 @@
 		return true;
 	});
 
-	async function handleReject() {
-		if (!rejection_reason) {
+	async function submitPodEntry() {
+		if (!podInputNumber) {
+			toast.update('Error', 'Please enter POD Number', 'failed');
+			return;
+		}
+		buttonActive = true;
+		try {
+			const payload = {
+				orderId: podEnterOrder?.orderId,
+				key: 'lender',
+				// status: 'do_released',
+				pod_number: podInputNumber
+			};
+			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			const data = await res.json();
+			if (res.ok) {
+				toast.update('Success', data.message || 'POD Number submitted successfully', 'success');
+				podEnterOrder = null;
+				podInputNumber = '';
+				await loadData();
+			} else {
+				toast.update('Error', data.message || 'Submission failed', 'failed');
+			}
+		} catch (e) {
+			toast.update('Error', 'Server connection failed', 'failed');
+			console.error(e);
+		} finally {
+			buttonActive = false;
+		}
+	}
+
+	async function submitClaimUpdate() {
+		if ((newClaimStatus === 'Settled' || newClaimStatus === 'claim_settled' || newClaimStatus === 'settled') && !newClaimAmount) {
+			toast.update('Error', 'Please provide Claim Amount', 'failed');
+			return;
+		}
+		buttonActive = true;
+		try {
+			const payload = {
+				orderId: claimEditOrder?.orderId,
+				// key: 'relationship_manager',
+				claimAmount: newClaimAmount,
+				claimStatus: newClaimStatus
+			};
+			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(payload)
+			});
+			const data = await res.json();
+			if (res.ok) {
+				toast.update('Success', data.message || 'Claim updated successfully', 'success');
+				claimEditOrder = null;
+				newClaimStatus = '';
+				newClaimAmount = '';
+				await loadData();
+			} else {
+				toast.update('Error', data.message || 'Update failed', 'failed');
+			}
+		} catch (e) {
+			toast.update('Error', 'Server connection failed', 'failed');
+			console.error(e);
+		} finally {
+			buttonActive = false;
+		}
+	}
+
+	async function handleReject(directOrder = null, directReason = null) {
+		const order = directOrder || rejection_order;
+		const reason = directReason || rejection_reason;
+
+		if (!reason) {
 			toast.update('Error', 'Please provide a rejection reason', 'failed');
 			return;
 		}
@@ -339,8 +483,8 @@
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					orderId: rejection_order?.orderId,
-					reason: rejection_reason
+					orderId: order?.orderId,
+					reason: reason
 				})
 			});
 
@@ -385,11 +529,34 @@
 				payload.utr_number = statusFormData.utrNumber;
 			} else if (status === 'do_release' || status === 'do_released') {
 				payload.pod_number = statusFormData.podNumber;
+
+				if (!statusFormData.doDocument || statusFormData.doDocument.length === 0) {
+					toast.update('Error', 'Please upload DO Release document', 'failed');
+					buttonActive = false;
+					return;
+				}
+
+				const docFormData = new FormData();
+				docFormData.append('orderId', order?.orderId);
+				docFormData.append('key', roleKey);
+				docFormData.append('doDocument', statusFormData.doDocument[0]);
+
+				const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
+					method: 'POST',
+					credentials: 'include',
+					body: docFormData
+				});
+
+				if (!uploadRes.ok) {
+					const errData = await uploadRes.json().catch(() => ({}));
+					toast.update('Error', errData.message || 'Failed to upload DO Document', 'failed');
+					buttonActive = false;
+					return;
+				}
 			} else if (status === 'partial_disbursal' || status === 'partial_disbursed') {
-				payload.utr_number = statusFormData.utrNumber;
-				payload.partial_disbursed_amount = Number(statusFormData.partialDisbursedAmount);
+				// No editable fields needed. Just progress the status.
 			} else if (status === 'complete_disbursal' || status === 'disbursed') {
-				payload.final_disbursal_amount = Number(statusFormData.finalDisbursalAmount);
+				// No editable fields needed
 			} else if (status === 'settled') {
 				payload.final_utr_number = statusFormData.finalUtrNumber;
 			}
@@ -741,6 +908,29 @@
 			});
 		}
 
+		if (role === 'lender' || role === 'relationship_manager') {
+			columns.push({
+				label: 'Claim Status',
+				key: 'claimStatus',
+				width: '140px',
+				display: 'always',
+				type: 'status_with_edit',
+				hasEdit: role === 'relationship_manager',
+				onEdit: (row) => {
+					claimEditOrder = row;
+					newClaimStatus = row.claimStatus === '-' ? 'Pending' : row.claimStatus;
+					newClaimAmount = row.claimAmount === '-' ? '' : row.claimAmount;
+				}
+			});
+			columns.push({
+				label: 'Claim Amount',
+				key: 'claimAmount',
+				width: '140px',
+				display: 'always',
+				type: 'text'
+			});
+		}
+
 		columns.push({
 			label: 'Action',
 			key: 'isCompleted',
@@ -763,14 +953,49 @@
 	$effect(async () => {
 		loadData();
 	});
-	function handleFileClick(e, url) {
+	async function handleFileClick(e, url) {
 		e.preventDefault();
 		e.stopPropagation();
 
-		if (url) {
-			window.open(url, '_blank', 'noopener,noreferrer');
-		} else {
+		if (!url) {
 			toast.update('Error', 'File URL not found', 'failed');
+			return;
+		}
+
+		// Open immediately to bypass popup blockers, then navigate
+		const newWindow = window.open('', '_blank', 'noopener,noreferrer');
+		if (newWindow) {
+			newWindow.document.body.innerHTML = '<div style="font-family: sans-serif; padding: 20px;">Fetching secure document...</div>';
+		}
+
+		try {
+			const res = await fetch(
+				`${PUBLIC_API_BASE_URL}/api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
+				{
+					method: 'GET',
+					credentials: 'include'
+				}
+			);
+			const data = await res.json();
+			
+			if (!res.ok) {
+				throw new Error(data.message || 'Failed to fetch signed URL');
+			}
+			
+			if (data.url) {
+				if (newWindow) {
+					newWindow.location.href = data.url;
+				} else {
+					window.open(data.url, '_blank', 'noopener,noreferrer');
+				}
+			} else {
+				if (newWindow) newWindow.close();
+				toast.update('Error', 'No URL returned from server', 'failed');
+			}
+		} catch (err) {
+			if (newWindow) newWindow.close();
+			console.error('Error fetching signed URL:', err);
+			toast.update('Error', err.message || 'Failed to open file', 'failed');
 		}
 	}
 	async function loadData() {
@@ -873,6 +1098,10 @@
 					if (rawLenderStatus === 'bill_upload_required' && rawDocStatus === 'bill_verified') {
 						rawRoleStatus = 'bill_verified';
 						roleDisplayStatus = formatStatusLabel('bill_verified');
+					} else if (rawLenderStatus === 'do_released') {
+						const podCaptured = order.lenderActions?.[order.lenderActions.length - 1]?.podCaptured || false;
+						roleDisplayStatus = podCaptured ? 'POD CAPTURED' : 'POD REQUESTED';
+						rawRoleStatus = rawLenderStatus;
 					} else {
 						roleDisplayStatus = lenderStatus;
 						rawRoleStatus = rawLenderStatus;
@@ -923,12 +1152,15 @@
 					roleDisplayStatus,
 					rawRoleStatus,
 					lenderRawStatus,
+					rawDocStatus,
 					doctorActionStatus: docStatus,
 					lenderActionStatus: lenderStatus,
 					requestedAmountText: formatAmount(order.requestedAmount),
 					doctorAmountText: formatAmount(docAmtRaw),
 					lenderAmountText: formatAmount(lenderAmtRaw),
 					doctorAmountRaw: docAmtRaw,
+					claimAmount: order.claimAmount ? formatAmount(order.claimAmount) : '-',
+					claimStatus: order.claimStatus ? formatStatusLabel(order.claimStatus) : '-',
 					created_at: order.created_at
 						? new Date(order.created_at).toLocaleDateString().split('T')[0]
 						: '-',
@@ -953,21 +1185,37 @@
 	<div
 		class="flex flex-col lg:flex-row lg:items-stretch justify-between px-2 lg:px-8 py-2 lg:py-4 border-b border-slate-200 bg-white gap-4 lg:gap-0"
 	>
-		<div class="self-start flex flex-col gap-1 w-full">
-			<span class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">
-				Queue Management
-			</span>
-			<h2 class="text-sm font-bold text-slate-700 ml-1">Reimbursement Orders Pending OPS Check</h2>
+		<div class="self-start flex flex-col gap-3 w-full max-w-md">
+			<div>
+				<span class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">
+					{user?.role ? user.role.replace(/_/g, ' ') : ''} Reimbursement Orders
+				</span>
+				<!-- <h2 class="text-sm font-bold text-slate-700 ml-1 capitalize">
+					
+				</h2> -->
+			</div>
+			<div class="relative group">
+				{#if !loading}
+					<Search
+						class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#ad5389] transition-colors"
+						size={18}
+					/>
+				{:else}
+					<Loader
+						class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#ad5389] transition-colors animate-spin"
+						size={18}
+					/>
+				{/if}
+
+				<input
+					oninput={handleInput}
+					bind:value
+					type="text"
+					placeholder="Search by hospital name, Borrower Name"
+					class="w-full bg-slate-100/50 border border-slate-200 rounded-2xl py-2.5 pl-11 pr-4 outline-none focus:bg-white focus:border-slate-300 transition-all text-sm"
+				/>
+			</div>
 		</div>
-		<!-- <div class="flex items-center lg:self-end w-full lg:w-auto">
-		<button
-			onclick={onboard}
-			class="w-full lg:w-auto shrink-0 flex gap-3 bg-slate-900 hover:bg-white hover:text-[#ad5389] font-bold items-center justify-center py-3 px-6 text-white rounded-2xl border border-transparent hover:border-[#ad5389] cursor-pointer transition-all group"
-		>
-			<span class="text-sm">Add Hospital</span>
-			<Plus size={18} class="group-hover:rotate-90 transition-transform duration-300" />
-		</button>
-	</div> -->
 	</div>
 
 	<div class="overflow-x-auto">
@@ -1010,7 +1258,7 @@
 										{#each orderConfig as col (col.key)}
 											{#if col.type === 'action_button'}
 												<div
-													class="flex flex-col py-6 border-b border-slate-50 lg:border-0 lg:py-0 order-first lg:order-last sm:col-span-2 lg:col-span-1"
+													class="flex flex-col py-6 border-b border-slate-50 lg:border-0 lg:py-0 order-first lg:order-last sm:col-span-2 lg:col-span-1 lg:hidden"
 												>
 													<button
 														disabled={buttonActive}
@@ -1026,31 +1274,48 @@
 													</button>
 												</div>
 											{:else if col.type == 'input'}
+												<!-- Phone layout: Input field -->
 												<div
-													class="relative flex lg:flex-row flex-col lg:items-center items-start {row[
-														col.disable_key
-													]
-														? 'cursor-not-allowed'
-														: 'cursor-pointer'}"
+													class="relative flex lg:hidden flex-col items-start {row[col.disable_key] ? 'cursor-not-allowed' : 'cursor-pointer'} w-full"
 												>
-													<label class="lg:hidden inline-block text-slate-400 font-semibold text-xs"
-														>{col.label}:</label
-													>
+													<span class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 lg:hidden block">
+														{col.label || col.key}
+													</span>
 													<input
 														bind:value={inputsData[row.orderId]}
 														disabled={row[col.disable_key]}
 														onclick={(e) => e.stopPropagation()}
 														type="number"
 														placeholder=""
-														class="lg:w-32 w-full py-3 pl-4 pr-6 bg-white border border-slate-200 rounded-2xl outline-none transition-all duration-300
-						   placeholder:text-slate-400 text-slate-900
-						   hover:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100 disabled:cursor-not-allowed
-						   focus:border-[#ad5389] focus:ring-4 focus:ring-[#ad5389]/10"
+														class="w-full py-3 pl-4 pr-6 bg-white border border-slate-200 rounded-xl outline-none transition-all duration-300 placeholder:text-slate-400 text-slate-900 hover:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500 disabled:border-slate-100 disabled:cursor-not-allowed focus:border-[#ad5389] focus:ring-4 focus:ring-[#ad5389]/10"
 													/>
 												</div>
+												<!-- PC layout: Plain text view matching other fields -->
+												<div class="hidden lg:flex flex-col min-w-0">
+													<span
+														class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1"
+													>
+														{col.label || col.key}
+													</span>
+													<span class="text-base font-semibold text-slate-800 break-words">
+														{inputsData[row.orderId] || row[col.key] || '-'}
+													</span>
+												</div>
 											{:else if col.type == 'double_action_button'}
-												<div class="flex items-center gap-2">
-													{#if user.role === 'relationship_manager' && row.lenderCode === 'IFL' && ((row.rawRoleStatus || '').toLowerCase().replace(/ /g, '_') === 'bill_upload_required' || (row.doctorActions?.[row.doctorActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_') === 'reupload_bill') && !row.doctorActions?.some((a) => (a.status || '').replace(/ /g, '_').toLowerCase() === 'bill_uploaded')}
+												<div class="flex items-center gap-2 lg:hidden">
+													{#if user.role === 'relationship_manager' && row.lenderRawStatus === 'do_released' && row.lenderActions?.[row.lenderActions.length - 1]?.podCaptured === false}
+														<button
+															disabled={buttonActive}
+															onclick={(e) => {
+																e.stopPropagation();
+																podEnterOrder = row;
+															}}
+															class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-[#ad5389] hover:bg-white hover:text-[#ad5389] text-white font-bold items-center justify-center py-2 px-4 rounded-2xl cursor-pointer border border-transparent transition-all disabled:opacity-50 shadow-md"
+														>
+															<span class="text-xs">Enter POD</span>
+															<Edit size={16} />
+														</button>
+													{:else if user.role === 'relationship_manager' && row.lenderCode === 'IFL' && ((row.rawRoleStatus || '').toLowerCase().replace(/ /g, '_') === 'bill_upload_required' || row.rawDocStatus === 'reupload_bill') && !['bill_uploaded', 'bill_verified'].includes(row.rawDocStatus)}
 														<button
 															disabled={buttonActive}
 															onclick={(e) => {
@@ -1096,7 +1361,7 @@
 																e.stopPropagation();
 																col.onclick_two(row);
 															}}
-															class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-4 rounded-2xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two disabled:opacity-50 disabled:cursor-not-allowed"
+															class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-white text-slate-500 hover:text-red-400 font-bold items-center justify-center py-2 px-4 rounded-2xl border border-slate-200 hover:border-red-400 cursor-pointer transition-all group/two disabled:opacity-50 disabled:cursor-not-allowed"
 														>
 															<span class="text-xs">{col.button_two_label}</span>
 															<XCircle
@@ -1105,25 +1370,31 @@
 															/>
 														</button>
 													{:else}
-														<p
-															class="text-slate-400 text-[11px] lg:text-xs font-bold uppercase text-center w-full"
-														>
-															{row.actionStatus || 'Completed'}
-														</p>
+														<div class="flex flex-col min-w-0 w-full lg:text-center text-left">
+															<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1 lg:hidden block">
+																Status
+															</span>
+															<span class="text-slate-400 text-[11px] lg:text-xs font-bold uppercase w-full">
+																{row.actionStatus || 'Completed'}
+															</span>
+														</div>
 													{/if}
 												</div>
 											{:else if col.type === 'url'}
-												<div class="flex flex-col truncate">
+												<div class="flex flex-col min-w-0 truncate">
+													<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1 lg:block hidden">
+														{col.label || 'Documents'}
+													</span>
 													<button
 														onclick={(e) => {
 															e.stopPropagation();
 															selected_order_for_files = row;
 														}}
-														class="w-full lg:w-auto shrink-0 flex gap-3 bg-white text-blue-500 font-semibold items-center justify-center py-3 px-6 rounded-2xl border border-transparent hover:border-blue-500 cursor-pointer transition-all group/link"
+														class="w-full lg:w-max shrink-0 flex gap-2 bg-white text-blue-500 font-semibold items-center justify-center py-2 px-4 rounded-xl border border-slate-100 hover:border-blue-500 cursor-pointer transition-all group/link"
 													>
 														<span class="text-sm">View Files</span>
 														<ExternalLink
-															size={18}
+															size={16}
 															class="transition-transform duration-300 group-hover/link:-translate-y-1 group-hover/link:translate-x-1"
 														/>
 													</button>
@@ -1134,7 +1405,7 @@
 												>
 													<div class="flex flex-col min-w-0">
 														<span
-															class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1"
+															class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1"
 														>
 															{col.label || col.key}
 														</span>
@@ -1156,6 +1427,82 @@
 												</div>
 											{/if}
 										{/each}
+										{#if row.lenderActions?.length}
+											{@const latestLenderAction = row.lenderActions[row.lenderActions.length - 1]}
+											{#if latestLenderAction?.partial_disbursed_amount?.$numberDecimal || latestLenderAction?.final_disbursal_amount?.$numberDecimal}
+												<!-- <div class="col-span-1 sm:col-span-2 lg:col-span-4 border-t border-slate-100 pt-6 mt-2">
+													<span class="text-[10px] font-black uppercase tracking-widest text-slate-400">
+														Lender Disbursal
+													</span>
+												</div> -->
+												{#if latestLenderAction?.partial_disbursed_amount?.$numberDecimal}
+													<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1">
+														<div class="flex flex-col min-w-0">
+															<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Partial Disbursed Amount</span>
+															<span class="text-base font-semibold text-slate-800 break-words">₹ {formatAmount(latestLenderAction.partial_disbursed_amount.$numberDecimal)}</span>
+														</div>
+													</div>
+												{/if}
+												{#if latestLenderAction?.partial_disbursed_amount?.$numberDecimal}
+													<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1">
+														<div class="flex flex-col min-w-0">
+															<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Fee Amount</span>
+															<span class="text-base font-semibold text-slate-800 break-words">₹ {formatAmount(latestLenderAction.feeAmount.$numberDecimal)}</span>
+														</div>
+													</div>
+												{/if}
+												<!-- {#if latestLenderAction?.final_disbursal_amount?.$numberDecimal}
+													<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1">
+														<div class="flex flex-col min-w-0">
+															<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Final Disbursal Amount</span>
+															<span class="text-base font-semibold text-slate-800 break-words">₹ {formatAmount(latestLenderAction.final_disbursal_amount.$numberDecimal)}</span>
+														</div>
+													</div>
+												{/if} -->
+											{/if}
+										{/if}
+										{#if (user.role === 'doctor' || user.role === 'lender') && row.relationshipManager}
+											<div class="col-span-1 sm:col-span-2 lg:col-span-4 border-t border-slate-100 pt-6 mt-2">
+												<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+													Relationship Manager
+												</span>
+											</div>
+											{#if row.relationshipManager.name}
+												<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1">
+													<div class="flex flex-col min-w-0">
+														<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Name</span>
+														<span class="text-base font-semibold text-slate-800 break-words">{row.relationshipManager.name}</span>
+													</div>
+												</div>
+											{/if}
+											{#if row.relationshipManager.phoneNumber}
+												<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1 group/rm-phone">
+													<div class="flex flex-col min-w-0">
+														<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Phone Number</span>
+														<span class="text-base font-semibold text-slate-800 break-words">{row.relationshipManager.phoneNumber}</span>
+													</div>
+													<div class="flex items-center gap-2 lg:opacity-0 lg:group-hover/rm-phone:opacity-100 transition-opacity">
+														<button onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.relationshipManager.phoneNumber); toast.update('Copied', 'Phone number copied to clipboard', 'info'); }} class="p-2 text-slate-400 bg-slate-50 rounded-lg hover:text-[#ad5389] hover:bg-[#ad5389]/10 cursor-pointer">
+															<Copy size={16} />
+														</button>
+													</div>
+												</div>
+											{/if}
+											{#if row.relationshipManager.email}
+												<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1 group/rm-email">
+													<div class="flex flex-col min-w-0">
+														<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Email</span>
+														<span class="text-base font-semibold text-slate-800 break-words">{row.relationshipManager.email}</span>
+													</div>
+													<div class="flex items-center gap-2 lg:opacity-0 lg:group-hover/rm-email:opacity-100 transition-opacity">
+														<button onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(row.relationshipManager.email); toast.update('Copied', 'Email address copied to clipboard', 'info'); }} class="p-2 text-slate-400 bg-slate-50 rounded-lg hover:text-[#ad5389] hover:bg-[#ad5389]/10 cursor-pointer">
+															<Copy size={16} />
+														</button>
+													</div>
+												</div>
+											{/if}
+										{/if}
+										
 									</div>
 								</div>
 
@@ -1265,7 +1612,19 @@
 					{:else if column.type == 'double_action_button'}
 						<div class="flex items-center gap-2">
 							{#if !row.isRejected}
-								{#if user.role === 'relationship_manager' && row.lenderCode === 'IFL' && ((row.rawRoleStatus || '').toLowerCase().replace(/ /g, '_') === 'bill_upload_required' || (row.doctorActions?.[row.doctorActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_') === 'reupload_bill') && !row.doctorActions?.some((a) => (a.status || '').replace(/ /g, '_').toLowerCase() === 'bill_uploaded')}
+								{#if user.role === 'relationship_manager' && row.lenderRawStatus === 'do_released' && row.lenderActions?.[row.lenderActions.length - 1]?.podCaptured === false}
+									<button
+										disabled={buttonActive}
+										onclick={(e) => {
+											e.stopPropagation();
+											podEnterOrder = row;
+										}}
+										class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-[#ad5389] hover:bg-white hover:text-[#ad5389] text-white font-bold items-center justify-center py-2 px-4 rounded-2xl cursor-pointer border border-transparent transition-all disabled:opacity-50 shadow-md"
+									>
+										<span class="text-[11px] lg:text-xs">Enter POD</span>
+										<Edit size={16} />
+									</button>
+								{:else if user.role === 'relationship_manager' && row.lenderCode === 'IFL' && ((row.rawRoleStatus || '').toLowerCase().replace(/ /g, '_') === 'bill_upload_required' || row.rawDocStatus === 'reupload_bill') && !['bill_uploaded', 'bill_verified'].includes(row.rawDocStatus)}
 									<button
 										disabled={buttonActive}
 										onclick={(e) => {
@@ -1311,7 +1670,7 @@
 											e.stopPropagation();
 											column.onclick_two(row);
 										}}
-										class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-3 rounded-xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two disabled:opacity-50 disabled:cursor-not-allowed"
+										class="flex-1 lg:w-auto shrink-0 flex gap-1.5 bg-white text-slate-500 hover:text-red-400 font-bold items-center justify-center py-2 px-3 rounded-xl border border-slate-200 hover:border-red-400 cursor-pointer transition-all group/two disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										<span class="text-[11px] lg:text-xs">{column.button_two_label}</span>
 										<XCircle
@@ -1340,7 +1699,7 @@
 									e.stopPropagation();
 									column.onclick(row._id);
 								}}
-								class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-white text-slate-500 hover:text-red-600 font-bold items-center justify-center py-2 px-4 rounded-2xl border border-slate-200 hover:border-red-600 cursor-pointer transition-all group/two"
+								class="flex-1 lg:w-auto shrink-0 flex gap-2 bg-white text-slate-500 hover:text-red-400 font-bold items-center justify-center py-2 px-4 rounded-2xl border border-slate-200 hover:border-red-400 cursor-pointer transition-all group/two"
 							>
 								<span class="text-sm">Login</span>
 								<LogIn
@@ -1365,8 +1724,16 @@
 						</div>
 					{:else if column.type == 'status_with_edit'}
 						{@const isSettled = (row.lenderActions || []).some(a => (a.status || '').toLowerCase() === 'settled') || (row.lenderRawStatus || '').toLowerCase() === 'settled'}
+						{@const isRejectedStatusText = (row[column.key] || '').toLowerCase().includes('reject')}
 						<div class="flex items-center gap-2 truncate">
-							{#if isSettled}
+							{#if isRejectedStatusText || row.isRejected}
+								<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-50 border border-red-400">
+									<XCircle size={13} class="text-red-400 shrink-0" />
+									<span class="truncate text-red-400 text-[12px] font-bold uppercase tracking-wide">
+										{row[column.key] || 'Rejected'}
+									</span>
+								</span>
+							{:else if isSettled}
 								<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
 									<CheckCircle size={13} class="text-emerald-500 shrink-0" />
 									<span class="truncate text-emerald-700 text-[12px] font-bold uppercase tracking-wide">
@@ -1407,9 +1774,9 @@
 
 						{#if column.hasEdit}
 							{@const editCheckStatus = (user.role === 'lender' && row.lenderRawStatus) ? row.lenderRawStatus : (row.rawRoleStatus || '').toLowerCase()}
-							{@const isStatusDisabled = row.isRejected || ['completed', 'complete', 'reject', 'rejected', 'complete_settled', 'npa', 'settled', 'doctor_approved', 'doctor_rejected', 'bill_verified', 'bill_rejected'].includes(
+							{@const isStatusDisabled = column.key !== 'claimStatus' && (row.isRejected || ['completed', 'complete', 'reject', 'rejected', 'complete_settled', 'npa', 'settled', 'doctor_approved', 'doctor_rejected', 'bill_verified', 'bill_rejected'].includes(
 								editCheckStatus
-							) || (row.lenderActions || []).some(action => ['complete_settled', 'npa', 'settled'].includes((action.status || '').toLowerCase()))}
+							) || (row.lenderActions || []).some(action => ['complete_settled', 'npa', 'settled'].includes((action.status || '').toLowerCase())))}
 							<button
 								disabled={buttonActive || isStatusDisabled}
 								onclick={(e) => {
@@ -1546,7 +1913,7 @@
 									class="w-full p-4 rounded-xl border {accountError ? 'border-red-400 focus:ring-red-400/30' : 'border-slate-200 focus:ring-slate-900'} focus:ring-2 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
 								/>
 								{#if accountError}
-									<p class="text-[10px] text-red-500 mt-2 font-medium">Must be 9–18 digits only (no spaces or letters).</p>
+									<p class="text-[10px] text-red-400 mt-2 font-medium">Must be 9–18 digits only (no spaces or letters).</p>
 								{:else}
 									<p class="text-[10px] text-slate-500 mt-2 font-medium">Enter your bank account number (9–18 digits).</p>
 								{/if}
@@ -1563,9 +1930,9 @@
 									class="w-full p-4 rounded-xl border {ifscError ? 'border-red-400 focus:ring-red-400/30' : 'border-slate-200 focus:ring-slate-900'} focus:ring-2 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 uppercase tracking-widest"
 								/>
 								{#if ifscError}
-									<p class="text-[10px] text-red-500 mt-2 font-medium">Invalid IFSC. Format: 4 letters + 0 + 6 alphanumeric (e.g. SBIN0001234).</p>
+									<p class="text-[10px] text-red-400 mt-2 font-medium">Invalid IFSC. Format: 4 letters + 0 + 6 alphanumeric (e.g. SBIN0001234).</p>
 								{:else}
-									<p class="text-[10px] text-slate-500 mt-2 font-medium">11-character RBI IFSC code (e.g. SBIN0001234).</p>
+									<p class="text-[10px] text-slate-500 mt-2 font-medium">11-character Bank IFSC code (e.g. SBIN0001234).</p>
 								{/if}
 							</div>
 						</div>
@@ -1574,7 +1941,7 @@
 					{#if newStatus === 'kyc_done' || newStatus === 'kyc'}
 						<!-- <div class="animate-in fade-in slide-in-from-top-2 pt-4">
 							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-								Loan Amount <span class="text-red-500 ml-1">*</span>
+								Loan Amount <span class="text-red-400 ml-1">*</span>
 							</label>
 							<input
 								type="number"
@@ -1591,45 +1958,41 @@
 
 					{#if newStatus === 'do_released' || newStatus === 'do_release'}
 						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
-							
+							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+								DO Document <span class="text-red-400 ml-1">*</span>
+							</label>
+							<input
+								type="file"
+								accept=".pdf,.jpg,.jpeg,.png"
+								bind:files={statusFormData.doDocument}
+								class="w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-slate-50 file:text-slate-700 hover:file:bg-slate-100 transition-colors border border-slate-200 rounded-xl outline-none"
+							/>
+							{#if statusFormData.doDocument && statusFormData.doDocument.length > 0}
+								<p class="text-[10px] text-green-600 mt-2 font-medium">Selected file: {statusFormData.doDocument[0].name}</p>
+							{:else}
+								<p class="text-[10px] text-slate-500 mt-2 font-medium">Please upload a valid document (PDF, JPG, PNG).</p>
+							{/if}
 						</div>
 					{/if}
 
 					{#if newStatus === 'partial_disbursal' || newStatus === 'partial_disbursed'}
+						{@const latestLenderAction = statusEditOrder?.lenderActions?.[statusEditOrder.lenderActions.length - 1] || {}}
 						<div class="animate-in fade-in slide-in-from-top-2 pt-4 space-y-4">
-							<!-- <div>
-								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-									UTR Number <span class="text-red-500 ml-1">*</span>
-								</label>
-								<input
-									type="text"
-									bind:value={statusFormData.utrNumber}
-									placeholder="Enter UTR Number"
-									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
-								/>
-								<p class="text-[10px] text-slate-500 mt-2 font-medium">Accepts alphanumeric RBI reference codes.</p>
-							</div> -->
-							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-								POD Number <span class="text-red-500 ml-1">*</span>
-							</label>
-							<input
-								type="text"
-								bind:value={statusFormData.podNumber}
-								placeholder="Enter POD Number"
-								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
-							/>
-							<p class="text-[10px] text-slate-500 mt-2 font-medium">Accepts alphanumeric values for Proof of Delivery.</p>
 							<div>
 								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-									Partial Disbursed Amount <span class="text-red-500 ml-1">*</span>
+									POD Number
 								</label>
-								<input
-									type="number"
-									bind:value={statusFormData.partialDisbursedAmount}
-									placeholder="Enter Amount"
-									class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
-								/>
-								<p class="text-[10px] text-slate-500 mt-2 font-medium">Accepts numeric values. Current Limit: {formatAmount(maxAllowedLoanAmount)}</p>
+								<div class="w-full p-4 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 font-semibold cursor-not-allowed truncate">
+									{latestLenderAction.pod_number || '—'}
+								</div>
+							</div>
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Partial Disbursed Amount
+								</label>
+								<div class="w-full p-4 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 font-semibold cursor-not-allowed truncate">
+									₹ {latestLenderAction.partial_disbursed_amount?.$numberDecimal ? formatAmount(latestLenderAction.partial_disbursed_amount.$numberDecimal) : '—'}
+								</div>
 							</div>
 						</div>
 					{/if}
@@ -1637,7 +2000,7 @@
 					{#if newStatus === 'partial_settled'}
 						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
 							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-								Borrower UTR Number <span class="text-red-500 ml-1">*</span>
+								Borrower UTR Number <span class="text-red-400 ml-1">*</span>
 							</label>
 							<input
 								type="text"
@@ -1645,37 +2008,36 @@
 								placeholder="Enter UTR Number"
 								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 uppercase tracking-widest"
 							/>
-							<p class="text-[10px] text-slate-500 mt-2 font-medium">Accepts alphanumeric RBI UTR reference code.</p>
+							<p class="text-[10px] text-slate-500 mt-2 font-medium">Accepts alphanumeric UTR reference code.</p>
 						</div>
 					{/if}
 					
 					{#if newStatus === 'complete_disbursal' || newStatus === 'disbursed'}
-						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
-							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-								Final Disbursal Amount <span class="text-red-500 ml-1">*</span>
-							</label>
-							<input
-								type="number"
-								bind:value={statusFormData.finalDisbursalAmount}
-								placeholder="Enter Amount"
-								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
-							/>
-							<p class="text-[10px] text-slate-500 mt-2 font-medium">Accepts numeric values. Current Limit: {formatAmount(Math.max(0, maxAllowedLoanAmount - computedPartialDisbursedAmount))}</p>
+						{@const latestLenderAction = statusEditOrder?.lenderActions?.[statusEditOrder.lenderActions.length - 1] || {}}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4 space-y-4">
+							<div>
+								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+									Final Disbursal Amount
+								</label>
+								<div class="w-full p-4 rounded-xl border border-slate-200 bg-slate-100 text-slate-600 font-semibold cursor-not-allowed truncate">
+									₹ {latestLenderAction.final_disbursal_amount?.$numberDecimal ? formatAmount(latestLenderAction.final_disbursal_amount.$numberDecimal) : '—'}
+								</div>
+							</div>
 						</div>
 					{/if}
 
 					{#if newStatus === 'settled'}
 						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
 							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-								 UTR Number <span class="text-red-500 ml-1">*</span>
+								 UTR Number <span class="text-red-400 ml-1">*</span>
 							</label>
 							<input
 								type="text"
 								bind:value={statusFormData.finalUtrNumber}
-								placeholder="Enter Final UTR Number"
+								placeholder="Enter UTR Number"
 								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 uppercase tracking-widest"
 							/>
-							<p class="text-[10px] text-slate-500 mt-2 font-medium">Alphanumeric RBI UTR reference code for final settlement.</p>
+							<p class="text-[10px] text-slate-500 mt-2 font-medium">Alphanumeric UTR reference code for final settlement.</p>
 						</div>
 					{/if}
 				</div>
@@ -1737,7 +2099,7 @@
 								<div class="flex flex-col gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-300 transition-colors">
 									<div class="flex items-center justify-between border-b border-slate-200 pb-2">
 										<span class="font-semibold text-slate-700">{doc.name}</span>
-										{#if user?.role?.toLowerCase()?.trim() === 'relationship_manager'}
+										{#if canReplaceDocument(doc.bucket)}
 											<div class="relative">
 												<input
 													type="file"
@@ -1756,7 +2118,7 @@
 														<span class="text-xs">Uploading...</span>
 													{:else}
 														<Upload size={14} />
-														<span class="text-xs">Replace</span>
+														<span class="text-xs">{doc.files && doc.files.length > 0 ? 'Replace' : 'Upload'}</span>
 													{/if}
 												</label>
 											</div>
@@ -1796,7 +2158,7 @@
 											<ExternalLink size={14} />
 											<span class="text-xs">View</span>
 										</button>
-										{#if user?.role?.toLowerCase()?.trim() === 'relationship_manager'}
+										{#if canReplaceDocument(doc.bucket)}
 											<div class="relative">
 												<input
 													type="file"
@@ -2087,7 +2449,7 @@
 						{#if !rmUploadOrder?.documents?.lenderDoc?.cancelledCheque}
 							<div>
 								<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-									Cancelled Borrower Cheque <span class="text-red-500 ml-1">*</span>
+									Cancelled Borrower Cheque <span class="text-red-400 ml-1">*</span>
 								</label>
 								<input
 									type="file"
@@ -2099,7 +2461,7 @@
 						{/if}
 						<div>
 							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-								Final Bill <span class="text-red-500 ml-1">*</span>
+								Final Bill <span class="text-red-400 ml-1">*</span>
 							</label>
 							<input
 								type="file"
@@ -2184,11 +2546,11 @@
 					</button>
 					<button
 						disabled={buttonActive}
-						onclick={() => {
-							rejection_order = billVerifyOrder;
+						onclick={async () => {
+							await handleReject(billVerifyOrder, 'bill_reject');
 							billVerifyOrder = null;
 						}}
-						class="flex-1 flex gap-2 items-center justify-center py-4 px-6 rounded-xl bg-white text-slate-500 hover:text-red-600 hover:border-red-400 font-bold border border-slate-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed group/reject"
+						class="flex-1 flex gap-2 items-center justify-center py-4 px-6 rounded-xl bg-white text-slate-500 hover:text-red-400 hover:border-red-400 font-bold border border-slate-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed group/reject"
 					>
 						<XCircle size={16} class="group-hover/reject:rotate-90 transition-transform duration-300" />
 						<span>Reject Bill</span>
@@ -2197,6 +2559,174 @@
 			</div>
 		</div>
 	{/if}
+
+{#if podEnterOrder}
+	{@render popUpPodEntry()}
+{/if}
+
+{#snippet popUpPodEntry()}
+	<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+		<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 flex flex-col">
+			<div class="flex items-center justify-between p-6">
+				<div class="flex flex-col">
+					<h2 class="text-2xl font-bold text-slate-800">Enter POD Number</h2>
+					<p class="text-sm text-slate-500 font-mono mt-1">{podEnterOrder?.orderId}</p>
+				</div>
+				<button
+					onclick={() => { podEnterOrder = null; podInputNumber = ''; }}
+					class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-xl transition-colors"
+				>
+					<X size={24} />
+				</button>
+			</div>
+			<div class="px-8 pb-8 flex-1" class:disabled-style={buttonActive}>
+				<div class="space-y-6">
+					<div>
+						<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+							POD Number <span class="text-red-400 ml-1">*</span>
+						</label>
+						<input
+							type="text"
+							bind:value={podInputNumber}
+							placeholder="Enter POD Number"
+							class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700"
+						/>
+					</div>
+					<div class="flex gap-4 pt-4 border-t border-slate-100">
+						<button
+							onclick={() => { podEnterOrder = null; podInputNumber = ''; }}
+							class="flex-1 py-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+						>
+							Cancel
+						</button>
+						<button
+							onclick={submitPodEntry}
+							disabled={buttonActive}
+							class="flex-[2] py-4 font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50"
+						>
+							Submit
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+{/snippet}
+
+{#if claimEditOrder}
+	{@render popUpClaimEdit()}
+{/if}
+
+{#snippet popUpClaimEdit()}
+	<div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+		<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg border border-slate-200 flex flex-col">
+			<div class="flex items-center justify-between p-6 border-b border-slate-100">
+				<div class="flex flex-col">
+					<h2 class="text-2xl font-bold text-slate-800">Edit Claim Status</h2>
+					<p class="text-sm text-slate-500 font-mono mt-1">{claimEditOrder?.orderId}</p>
+				</div>
+				<button
+					onclick={() => claimEditOrder = null}
+					class="text-slate-400 hover:text-slate-600 hover:bg-slate-100 p-2 rounded-xl transition-colors"
+				>
+					<X size={24} />
+				</button>
+			</div>
+			<div class="px-8 pb-8 pt-6 flex-1" class:disabled-style={buttonActive}>
+				<div class="space-y-6">
+					<div class="animate-in fade-in slide-in-from-top-2">
+						<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+							Claim Status
+						</label>
+						<div class="relative w-full">
+							<button
+								type="button"
+								onclick={() => (isClaimStatusDropdownOpen = !isClaimStatusDropdownOpen)}
+								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 flex justify-between items-center"
+							>
+								<span class="font-medium">
+									{newClaimStatus
+										? claim_status_options.find((o) => o.value === newClaimStatus)?.label || newClaimStatus
+										: 'Select a status...'}
+								</span>
+								<ChevronDown
+									size={18}
+									class="text-slate-400 transition-transform {isClaimStatusDropdownOpen
+										? 'rotate-180'
+										: ''}"
+								/>
+							</button>
+
+							{#if isClaimStatusDropdownOpen}
+								<div
+									role="presentation"
+									class="fixed inset-0 z-40"
+									onclick={() => (isClaimStatusDropdownOpen = false)}
+								></div>
+
+								<div
+									class="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto overflow-x-hidden"
+								>
+									{#each claim_status_options as opt}
+										<button
+											type="button"
+											class="w-full text-left px-5 py-4 transition-colors border-b border-slate-50 last:border-0 font-medium text-slate-700 hover:bg-slate-50/80 {newClaimStatus === opt.value ? 'bg-slate-50/80 text-[#ad5389]' : ''}"
+											onclick={() => {
+												newClaimStatus = opt.value;
+												isClaimStatusDropdownOpen = false;
+											}}
+										>
+											{opt.label}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+					
+					{#if newClaimStatus === 'Settled' || newClaimStatus === 'claim_settled' || newClaimStatus === 'settled'}
+						<div class="animate-in fade-in slide-in-from-top-2">
+							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+								Claim Amount <span class="text-red-400 ml-1">*</span>
+							</label>
+							<div class="relative">
+								<span class="absolute inset-y-0 left-0 pl-4 flex items-center text-slate-400 font-bold">₹</span>
+								<input
+									type="number"
+									bind:value={newClaimAmount}
+									placeholder="0"
+									class="w-full pl-8 p-4 rounded-xl border border-slate-200 outline-none bg-slate-50 font-semibold focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-slate-800"
+								/>
+							</div>
+						</div>
+					{/if}
+
+					<div class="flex gap-4 pt-4 border-t border-slate-100 mt-4">
+						<button
+							onclick={() => claimEditOrder = null}
+							class="flex-1 py-4 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-all"
+						>
+							Cancel
+						</button>
+						<button
+							onclick={submitClaimUpdate}
+							disabled={buttonActive}
+							class="flex-[2] py-4 font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+						>
+							<span>Save Changes</span>
+							{#if buttonActive}
+								<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+								</svg>
+							{/if}
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+{/snippet}
 
 <style>
 	@reference "tailwindcss";
