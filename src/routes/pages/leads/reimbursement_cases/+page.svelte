@@ -528,7 +528,7 @@
 			} else if (status === 'partial_settled') {
 				payload.utr_number = statusFormData.utrNumber;
 			} else if (status === 'do_release' || status === 'do_released') {
-				payload.pod_number = statusFormData.podNumber;
+				// payload.pod_number = statusFormData.podNumber;
 
 				if (!statusFormData.doDocument || statusFormData.doDocument.length === 0) {
 					toast.update('Error', 'Please upload DO Release document', 'failed');
@@ -954,50 +954,54 @@
 		loadData();
 	});
 	async function handleFileClick(e, url) {
-		e.preventDefault();
-		e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
 
-		if (!url) {
-			toast.update('Error', 'File URL not found', 'failed');
-			return;
-		}
+    if (!url) {
+        toast.update('Error', 'File URL not found', 'failed');
+        return;
+    }
 
-		// Open immediately to bypass popup blockers, then navigate
-		const newWindow = window.open('', '_blank', 'noopener,noreferrer');
-		if (newWindow) {
-			newWindow.document.body.innerHTML = '<div style="font-family: sans-serif; padding: 20px;">Fetching secure document...</div>';
-		}
+    // 1. Open the tab immediately using ONLY the target.
+    // Omit the third argument (features) to force a Tab behavior.
+    const newTab = window.open('', '_blank');
 
-		try {
-			const res = await fetch(
-				`${PUBLIC_API_BASE_URL}/api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
-				{
-					method: 'GET',
-					credentials: 'include'
-				}
-			);
-			const data = await res.json();
-			
-			if (!res.ok) {
-				throw new Error(data.message || 'Failed to fetch signed URL');
-			}
-			
-			if (data.url) {
-				if (newWindow) {
-					newWindow.location.href = data.url;
-				} else {
-					window.open(data.url, '_blank', 'noopener,noreferrer');
-				}
-			} else {
-				if (newWindow) newWindow.close();
-				toast.update('Error', 'No URL returned from server', 'failed');
-			}
-		} catch (err) {
-			if (newWindow) newWindow.close();
-			console.error('Error fetching signed URL:', err);
-			toast.update('Error', err.message || 'Failed to open file', 'failed');
-		}
-	}
+    if (newTab) {
+        newTab.document.body.innerHTML = `
+            <div style="display:flex; justify-content:center; align-items:center; height:100vh; font-family:sans-serif;">
+                <h3>Loading secure document...</h3>
+            </div>`;
+    } else {
+        // This usually triggers if the user has globally disabled all popups
+        toast.update('Error', 'Please allow popups to view this file', 'failed');
+        return;
+    }
+
+    try {
+        const res = await fetch(
+            `${PUBLIC_API_BASE_URL}/api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
+            {
+                method: 'GET',
+                credentials: 'include'
+            }
+        );
+        
+        const data = await res.json();
+
+        if (res.ok && data.url) {
+            // 2. Set the location. 
+            // This transforms the blank tab into your document.
+            newTab.location.href = data.url;
+        } else {
+            throw new Error(data.message || 'Failed to fetch URL');
+        }
+    } catch (err) {
+        // 3. Clean up
+        if (newTab) newTab.close();
+        console.error('Error fetching signed URL:', err);
+        toast.update('Error', err.message || 'Failed to open file', 'failed');
+    }
+}
 	async function loadData() {
 		const isSearch = value.trim().length > 0;
 		if (rejection_order) {
@@ -1159,7 +1163,10 @@
 					doctorAmountText: formatAmount(docAmtRaw),
 					lenderAmountText: formatAmount(lenderAmtRaw),
 					doctorAmountRaw: docAmtRaw,
-					claimAmount: order.claimAmount ? formatAmount(order.claimAmount) : '-',
+					insuranceType: order.insuranceType || '-',
+					claimAmount: order.claimAmount?.$numberDecimal 
+						? formatAmount(order.claimAmount.$numberDecimal) 
+						: (order.claimAmount ? formatAmount(order.claimAmount) : '-'),
 					claimStatus: order.claimStatus ? formatStatusLabel(order.claimStatus) : '-',
 					created_at: order.created_at
 						? new Date(order.created_at).toLocaleDateString().split('T')[0]
@@ -1451,6 +1458,7 @@
 														</div>
 													</div>
 												{/if}
+												
 												<!-- {#if latestLenderAction?.final_disbursal_amount?.$numberDecimal}
 													<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1">
 														<div class="flex flex-col min-w-0">
@@ -1723,7 +1731,7 @@
 							{/if}
 						</div>
 					{:else if column.type == 'status_with_edit'}
-						{@const isSettled = (row.lenderActions || []).some(a => (a.status || '').toLowerCase() === 'settled') || (row.lenderRawStatus || '').toLowerCase() === 'settled'}
+						{@const isSettledStatusText = (row[column.key] || '').toLowerCase().includes('settle') || (row.lenderActions || []).some(a => (a.status || '').toLowerCase() === 'settled') || (row.lenderRawStatus || '').toLowerCase() === 'settled'}
 						{@const isRejectedStatusText = (row[column.key] || '').toLowerCase().includes('reject')}
 						<div class="flex items-center gap-2 truncate">
 							{#if isRejectedStatusText || row.isRejected}
@@ -1733,7 +1741,7 @@
 										{row[column.key] || 'Rejected'}
 									</span>
 								</span>
-							{:else if isSettled}
+							{:else if isSettledStatusText}
 								<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200">
 									<CheckCircle size={13} class="text-emerald-500 shrink-0" />
 									<span class="truncate text-emerald-700 text-[12px] font-bold uppercase tracking-wide">
@@ -1774,7 +1782,7 @@
 
 						{#if column.hasEdit}
 							{@const editCheckStatus = (user.role === 'lender' && row.lenderRawStatus) ? row.lenderRawStatus : (row.rawRoleStatus || '').toLowerCase()}
-							{@const isStatusDisabled = column.key !== 'claimStatus' && (row.isRejected || ['completed', 'complete', 'reject', 'rejected', 'complete_settled', 'npa', 'settled', 'doctor_approved', 'doctor_rejected', 'bill_verified', 'bill_rejected'].includes(
+							{@const isStatusDisabled = column.key !== 'claimStatus' && (row.isRejected || ['completed', 'complete', 'reject', 'rejected', 'complete_settled', 'npa', 'settled',, 'doctor_approved', 'doctor_rejected', 'bill_verified', 'bill_rejected'].includes(
 								editCheckStatus
 							) || (row.lenderActions || []).some(action => ['complete_settled', 'npa', 'settled'].includes((action.status || '').toLowerCase())))}
 							<button
