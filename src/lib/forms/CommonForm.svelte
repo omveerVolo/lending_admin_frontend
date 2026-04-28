@@ -79,7 +79,7 @@
 			if (item.verify_onchange) {
 				const result = await item.verify_onchange(value, formData);
 				if (result) {
-					console.log(result);
+					
 					errors[item.name] = result;
 				}
 			}

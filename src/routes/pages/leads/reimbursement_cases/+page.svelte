@@ -1,11 +1,12 @@
 <script>
 	import { goto } from '$app/navigation';
-	import { PUBLIC_API_BASE_URL } from '$env/static/public';
+	
 	import Select from '$lib/components/UI/Select.svelte';
 	import { toast } from '$lib/state/toastData.svelte';
 	import { user } from '$lib/state/role_and_permission.svelte';
 
 	import {
+		AlertCircle,
 		CheckCircle,
 		ChevronRight,
 		ChevronDown,
@@ -43,6 +44,21 @@
 	let buttonActive = $state(false);
 	let rejection_order = $state(null);
 	let rejection_reason = $state('');
+
+	let tooltipState = $state({ visible: false, text: '', x: 0, y: 0 });
+	function handleTooltipEnter(e, text) {
+		if (!text) return;
+		tooltipState = { visible: true, text, x: e.clientX, y: e.clientY };
+	}
+	function handleTooltipMove(e) {
+		if (tooltipState.visible) {
+			tooltipState.x = e.clientX;
+			tooltipState.y = e.clientY;
+		}
+	}
+	function handleTooltipLeave() {
+		tooltipState.visible = false;
+	}
 	let inputsData = $state({});
 	let fetchingFile = $state(null);
 	let selected_order_for_files = $state(null);
@@ -407,7 +423,7 @@
 				// status: 'do_released',
 				pod_number: podInputNumber
 			};
-			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
+			const res = await fetch(`https://staging-backend.finnova.health/api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -443,7 +459,7 @@
 				claimAmount: newClaimAmount,
 				claimStatus: newClaimStatus
 			};
-			const res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
+			const res = await fetch(`https://staging-backend.finnova.health/api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -478,7 +494,7 @@
 
 		buttonActive = true;
 		try {
-			const res = await fetch(`${PUBLIC_API_BASE_URL}${baseEndpoint}/reject`, {
+			const res = await fetch(`https://staging-backend.finnova.health${baseEndpoint}/reject`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -541,7 +557,7 @@
 				docFormData.append('key', roleKey);
 				docFormData.append('doDocument', statusFormData.doDocument[0]);
 
-				const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
+				const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
 					method: 'POST',
 					credentials: 'include',
 					body: docFormData
@@ -563,7 +579,7 @@
 
 			let res;
 
-			res = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/status`, {
+			res = await fetch(`https://staging-backend.finnova.health/api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -604,7 +620,7 @@
 				formData.append('additionalDocuments', f);
 			});
 
-			const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
+			const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
 				method: 'POST',
 				credentials: 'include',
 				body: formData
@@ -653,7 +669,7 @@
 			}
 			formData.append('finalBill', rmUploadFormData.finalBill[0]);
 
-			const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
+			const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
 				method: 'POST',
 				credentials: 'include',
 				body: formData
@@ -692,7 +708,7 @@
 			formData.append('key', doc.bucket || 'lender'); 
 			formData.append(doc.rawKey, file);
 
-			const uploadRes = await fetch(`${PUBLIC_API_BASE_URL}/api/reimbursement/document`, {
+			const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
 				method: 'POST',
 				credentials: 'include',
 				body: formData
@@ -751,7 +767,7 @@
 
 		buttonActive = true;
 		try {
-			const res = await fetch(`${PUBLIC_API_BASE_URL}${baseEndpoint}/submit`, {
+			const res = await fetch(`https://staging-backend.finnova.health${baseEndpoint}/submit`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -979,7 +995,7 @@
 
     try {
         const res = await fetch(
-            `${PUBLIC_API_BASE_URL}/api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
+            `https://staging-backend.finnova.health/api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
             {
                 method: 'GET',
                 credentials: 'include'
@@ -1019,7 +1035,7 @@
 		}
 		try {
 			const response = await fetch(
-				`${PUBLIC_API_BASE_URL}${baseEndpoint}/pending?${params.toString()}`,
+				`https://staging-backend.finnova.health${baseEndpoint}/pending?${params.toString()}`,
 				{
 					method: 'GET',
 					credentials: 'include',
@@ -1079,12 +1095,18 @@
 
 				const rawDocStatus = (() => {
 					const latestDocAction = order.doctorActions?.[order.doctorActions.length - 1];
+					if (role === 'relationship_manager') {
+						return normalizeStatus(latestDocAction?.status || (order.doctorActions?.length ? '-' : order.status) || '-');
+					}
 					return normalizeStatus(latestDocAction?.status || order.status || '-');
 				})();
 				const docStatus = formatStatusLabel(rawDocStatus);
 
 				const rawLenderStatus = (() => {
 					const latestLenderAction = order.lenderActions?.[order.lenderActions.length - 1];
+					if (role === 'relationship_manager') {
+						return normalizeStatus(latestLenderAction?.status || (order.lenderActions?.length ? '-' : order.status) || '-');
+					}
 					return normalizeStatus(latestLenderAction?.status || order.status || '-');
 				})();
 				const lenderStatus = formatStatusLabel(rawLenderStatus);
@@ -1165,9 +1187,9 @@
 					doctorAmountRaw: docAmtRaw,
 					insuranceType: order.insuranceType || '-',
 					claimAmount: order.claimAmount?.$numberDecimal 
-						? formatAmount(order.claimAmount.$numberDecimal) 
+						? formatAmount(order.claimAmount?.$numberDecimal) 
 						: (order.claimAmount ? formatAmount(order.claimAmount) : '-'),
-					claimStatus: order.claimStatus ? formatStatusLabel(order.claimStatus) : '-',
+					claimStatus: (order.claimStatus && order.claimStatus.toLowerCase() !== 'pending' && order.claimStatus !== '-') ? formatStatusLabel(order.claimStatus) : 'PENDING',
 					created_at: order.created_at
 						? new Date(order.created_at).toLocaleDateString().split('T')[0]
 						: '-',
@@ -1177,7 +1199,7 @@
 				};
 			});
 			totalPages = pageCount || 1;
-			console.log(totalPages);
+
 			rows = orders;
 		} catch (error) {
 			console.error('Fetch failed:', error);
@@ -1450,11 +1472,11 @@
 														</div>
 													</div>
 												{/if}
-												{#if latestLenderAction?.partial_disbursed_amount?.$numberDecimal}
+												{#if latestLenderAction?.feeAmount?.$numberDecimal}
 													<div class="flex items-center justify-between py-4 lg:py-0 border-b border-slate-50 lg:border-0 col-span-1">
 														<div class="flex flex-col min-w-0">
 															<span class="text-[10px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Fee Amount</span>
-															<span class="text-base font-semibold text-slate-800 break-words">₹ {formatAmount(latestLenderAction.feeAmount.$numberDecimal)}</span>
+															<span class="text-base font-semibold text-slate-800 break-words">₹ {formatAmount(latestLenderAction?.feeAmount?.$numberDecimal)}</span>
 														</div>
 													</div>
 												{/if}
@@ -1731,14 +1753,37 @@
 							{/if}
 						</div>
 					{:else if column.type == 'status_with_edit'}
-						{@const isSettledStatusText = (row[column.key] || '').toLowerCase().includes('settle') || (row.lenderActions || []).some(a => (a.status || '').toLowerCase() === 'settled') || (row.lenderRawStatus || '').toLowerCase() === 'settled'}
+						{@const isSettledStatusText = (row[column.key] || '').toLowerCase().includes('settle')}
 						{@const isRejectedStatusText = (row[column.key] || '').toLowerCase().includes('reject')}
+						
+						{@const rejectReason = (() => {
+							if (isRejectedStatusText) {
+								if (column.key === 'doctorActionStatus') {
+									return row.doctorActions?.[row.doctorActions.length - 1]?.reason || '';
+								} else if (column.key === 'lenderActionStatus') {
+									return row.lenderActions?.[row.lenderActions.length - 1]?.reason || '';
+								}
+							}
+							return '';
+						})()}
+
 						<div class="flex items-center gap-2 truncate">
-							{#if isRejectedStatusText || row.isRejected}
-								<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-50 border border-red-400">
+							{#if isRejectedStatusText}
+								<!-- svelte-ignore a11y_no_static_element_interactions -->
+								<span 
+									class="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-50 border border-red-400 max-w-full truncate {rejectReason ? 'cursor-help' : ''}"
+									onmouseenter={(e) => rejectReason && handleTooltipEnter(e, rejectReason)}
+									onmousemove={handleTooltipMove}
+									onmouseleave={handleTooltipLeave}
+								>
 									<XCircle size={13} class="text-red-400 shrink-0" />
-									<span class="truncate text-red-400 text-[12px] font-bold uppercase tracking-wide">
-										{row[column.key] || 'Rejected'}
+									<span class="truncate text-red-500 text-[12px] font-bold uppercase tracking-wide flex items-center gap-1">
+										<span>{row[column.key] || 'Rejected'}</span>
+										{#if rejectReason}
+											<div class="inline-flex items-center justify-center shrink-0">
+												<AlertCircle size={12} class="text-red-400" />
+											</div>
+										{/if}
 									</span>
 								</span>
 							{:else if isSettledStatusText}
@@ -2735,6 +2780,15 @@
 		</div>
 	</div>
 {/snippet}
+
+{#if tooltipState.visible}
+	<div 
+		class="fixed z-[100] px-3 py-2 text-xs font-semibold text-white bg-slate-800 rounded-lg shadow-xl pointer-events-none max-w-[250px] break-words whitespace-normal border border-slate-700 leading-relaxed transition-opacity animate-in fade-in"
+		style="top: {tooltipState.y + 15}px; left: {tooltipState.x + 15}px;"
+	>
+		{tooltipState.text}
+	</div>
+{/if}
 
 <style>
 	@reference "tailwindcss";

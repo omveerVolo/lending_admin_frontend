@@ -1,7 +1,7 @@
 <script>
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { PUBLIC_API_BASE_URL } from '$env/static/public';
+	
 	import FormSteps from '$lib/components/FormSteps.svelte';
 	import Checkbox from '$lib/components/UI/Checkbox.svelte';
 	import Divider from '$lib/components/UI/Divider.svelte';
@@ -589,7 +589,7 @@
 					mid_enabled: 'true'
 				});
 
-				const response = await fetch(`${PUBLIC_API_BASE_URL}/api/hospital?${query.toString()}`, {
+				const response = await fetch(`https://staging-backend.finnova.health/api/hospital?${query.toString()}`, {
 					method: 'POST',
 					body: submissionData,
 					credentials: 'include'
@@ -598,7 +598,7 @@
 				const result = await response.json();
 				if (response.ok) {
 					toast.update('Success', 'Hospital updated', 'success');
-					console.log('Success:', result);
+
 					setTimeout(() => {
 						toast.clear();
 					}, 5000);
@@ -706,7 +706,7 @@
 		const endpoint = '/api/get_hospitals';
 
 		try {
-			const response = await fetch(`${PUBLIC_API_BASE_URL}${endpoint}`, {
+			const response = await fetch(`https://staging-backend.finnova.health${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -728,7 +728,7 @@
 		const endpoint = '/api/get_rm';
 
 		try {
-			const response = await fetch(`${PUBLIC_API_BASE_URL}${endpoint}`, {
+			const response = await fetch(`https://staging-backend.finnova.health${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -748,10 +748,10 @@
 
 	$effect(() => {
 		if (edit === true) {
-			console.log('edit population');
+
 			const loadData = async () => {
 				try {
-					const res = await fetch(`${PUBLIC_API_BASE_URL}/api/hospitals/${hospital_id}`, {
+					const res = await fetch(`https://staging-backend.finnova.health/api/hospitals/${hospital_id}`, {
 						credentials: 'include'
 					});
 					const { hospital } = await res.json();
@@ -765,7 +765,7 @@
 
 			loadData();
 		} else {
-			console.log('dry population');
+
 			// [...step_one, ...step_two, ...step_three].forEach(populationHelper);
 		}
 	});

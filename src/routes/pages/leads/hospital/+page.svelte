@@ -1,5 +1,5 @@
 <script>
-	import { PUBLIC_API_BASE_URL } from '$env/static/public';
+	
 	import { user } from '$lib/state/role_and_permission.svelte';
 	import {
 		ArrowRight,
@@ -84,7 +84,7 @@
 		}
 
 		try {
-			const response = await fetch(`${PUBLIC_API_BASE_URL}${endpoint}`, {
+			const response = await fetch(`https://staging-backend.finnova.health${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -98,7 +98,7 @@
 					relationship_manager: hospital?.created_by?.name
 				}));
 			}
-			// console.log(incomingData);
+
 			rows = incomingData;
 			totalPages = result.totalPages || 1;
 		} catch (error) {

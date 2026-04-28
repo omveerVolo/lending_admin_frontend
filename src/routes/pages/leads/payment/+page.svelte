@@ -37,7 +37,7 @@
 			const response = await fetch('https://mocki.io/v1/61608378-77a9-42f1-aeaf-24cdda8d2006', {
 				method: 'GET'
 			});
-			console.log();
+
 			const { data } = await response.json();
 
 			if (data && data.length > 0) {
