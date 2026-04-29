@@ -129,12 +129,9 @@
 	class="lg:hidden flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100 sticky top-0 z-30 w-full shadow-sm"
 >
 	{#if homeroute}
-		<div class="flex items-center gap-3">
-			<div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-				<span class="text-white font-bold text-lg">M</span>
-			</div>
-			<span class="font-bold tracking-tight">Finnova</span>
-		</div>
+		<div class="flex items-center gap-3 mb-12 px-2">
+		<img class="w-40" src="/finnova.png" />
+	</div>
 	{:else}
 		<div class="flex items-center gap-3">
 			<button
@@ -168,12 +165,9 @@
 		class="fixed inset-y-0 left-0 w-72 bg-white z-50 p-6 shadow-2xl lg:hidden flex flex-col"
 	>
 		<div class="flex items-center justify-between mb-12 px-2">
-			<div class="flex items-center gap-3">
-				<div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-					<span class="text-white font-bold text-xl">M</span>
-				</div>
-				<span class="text-xl font-bold tracking-tight">Finnova</span>
-			</div>
+			<div class="flex items-center gap-3 mb-12 px-2">
+		<img class="w-40" src="/finnova.png" />
+	</div>
 			<button onclick={() => (isMenuOpen = false)} class="text-gray-400 p-1">
 				<X size={24} />
 			</button>
@@ -187,10 +181,7 @@
 	class="h-screen w-64 bg-white border-r border-gray-100 lg:flex lg:flex-col p-6 hidden sticky top-0"
 >
 	<div class="flex items-center gap-3 mb-12 px-2">
-		<div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-			<span class="text-white font-bold text-xl">M</span>
-		</div>
-		<span class="text-xl font-bold tracking-tight">Finnova</span>
+		<img class="w-40" src="/finnova.png" />
 	</div>
 
 	{@render navContent()}

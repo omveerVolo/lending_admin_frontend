@@ -22,8 +22,14 @@ export async function validateToken() {
 
         try {
             let data = await res.json();
-
-
+            localStorage.setItem("card_emi_enabled", data.card_emi_enabled);
+            localStorage.setItem("reimbursement_enabled", data.reimbursement_enabled);
+            localStorage.setItem("lending_enabled", data.lending_enabled);
+            localStorage.setItem("zype_lending_enabled", data.zype_lending_enabled);
+            localStorage.setItem("zypePriority", data.zypePriority);
+            localStorage.setItem("fibePriority", data.fibePriority);
+            localStorage.setItem("fibeReimbursementPriority", data.fibeReimbursementPriority);
+            localStorage.setItem("iflReimbursementPriority", data.iflReimbursementPriority);
             // Explicitly handle the expired/deleted token scenario expected from the backend
             if (data && data.authenticated === false) {
 
