@@ -7,7 +7,7 @@ export async function validateToken() {
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
     try {
-        const res = await fetch(`https://staging-backend.finnova.health/auth/verify-token`, {
+        const res = await fetch(`https://backend.finnova.health//auth/verify-token`, {
             credentials: "include",
             method: "GET",
             signal: controller.signal

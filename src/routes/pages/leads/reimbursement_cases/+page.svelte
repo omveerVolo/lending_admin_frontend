@@ -14,10 +14,12 @@
 		Edit,
 		ExternalLink,
 		FolderClosed,
+		Info,
 		Link,
 		Loader,
 		LogIn,
 		LogInIcon,
+		MapPin,
 		Plus,
 		Search,
 		Upload,
@@ -44,9 +46,12 @@
 	let buttonActive = $state(false);
 	let rejection_order = $state(null);
 	let rejection_reason = $state('');
+	let successfulUploads = $state({});
+	let successfulReplacements = $state({});
 
 	let tooltipState = $state({ visible: false, text: '', x: 0, y: 0 });
 	function handleTooltipEnter(e, text) {
+		console.log(text);
 		if (!text) return;
 		tooltipState = { visible: true, text, x: e.clientX, y: e.clientY };
 	}
@@ -81,7 +86,7 @@
 	let isClaimStatusDropdownOpen = $state(false);
 	const claim_status_options = [
 		{ value: 'settled', label: 'Settled' },
-		
+		{ value: 'insurer_amount_received', label: 'Insurer Amount Received' },
 	];
 
 	let billDocs = $derived.by(() => {
@@ -99,7 +104,8 @@
 		utrNumber: '',
 		partialDisbursedAmount: '',
 		finalUtrNumber: '',
-		finalDisbursalAmount: ''
+		finalDisbursalAmount: '',
+		docrequiredRemark: ''
 	});
 
 	let status_options = $derived.by(() => {
@@ -208,7 +214,7 @@
 			currentRoleStatus = (statusEditOrder.doctorActions[statusEditOrder.doctorActions.length - 1].status || '').toLowerCase();
 		}
 
-		return options.map((opt) => {
+		return options?.map((opt) => {
 			let labelText = opt;
 			if (opt.toLowerCase() === 'additional_documents_required') {
 				labelText = 'documents_required';
@@ -309,7 +315,7 @@
 		if (user?.role?.toLowerCase()?.trim() !== 'relationship_manager') return false;
 		if (!selected_order_for_files) return false;
 
-		const lenderRawStatus = (selected_order_for_files.lenderActions?.[selected_order_for_files.lenderActions.length - 1]?.status || selected_order_for_files.status || '').toLowerCase().replace(/ /g, '_');
+		const lenderRawStatus = (selected_order_for_files.lenderActions?.[selected_order_for_files.lenderActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_');
 		if (['complete_settled', 'npa', 'settled'].includes(lenderRawStatus) || selected_order_for_files.isRejected) {
 			return false;
 		}
@@ -387,6 +393,8 @@
 			// 	statusEditOrder?.doctorActions?.[statusEditOrder.doctorActions.length - 1]?.amount
 			// 		?.$numberDecimal;
 			// if (Number(statusFormData.loanAmount) > Number(docAmtRaw)) return false;
+		} else if (newStatus === 'additional_documents_required') {
+			if (!statusFormData.docrequiredRemark?.trim()) return false;
 		} else if (newStatus === 'bill_upload_required') {
 			return true;
 		} else if (newStatus === 'nach_setup') {
@@ -423,7 +431,7 @@
 				// status: 'do_released',
 				pod_number: podInputNumber
 			};
-			const res = await fetch(`https://staging-backend.finnova.health/api/reimbursement/status`, {
+			const res = await fetch(`https://backend.finnova.health//api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -447,19 +455,20 @@
 	}
 
 	async function submitClaimUpdate() {
-		if ((newClaimStatus === 'Settled' || newClaimStatus === 'claim_settled' || newClaimStatus === 'settled') && !newClaimAmount) {
+		if ((newClaimStatus === 'Settled' || newClaimStatus === 'claim_settled' || newClaimStatus === 'settled' ) && !newClaimAmount) {
 			toast.update('Error', 'Please provide Claim Amount', 'failed');
 			return;
 		}
 		buttonActive = true;
 		try {
+			console.log(newClaimStatus)
 			const payload = {
 				orderId: claimEditOrder?.orderId,
 				// key: 'relationship_manager',
 				claimAmount: newClaimAmount,
 				claimStatus: newClaimStatus
 			};
-			const res = await fetch(`https://staging-backend.finnova.health/api/reimbursement/status`, {
+			const res = await fetch(`https://backend.finnova.health//api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -494,7 +503,7 @@
 
 		buttonActive = true;
 		try {
-			const res = await fetch(`https://staging-backend.finnova.health${baseEndpoint}/reject`, {
+			const res = await fetch(`https://backend.finnova.health/${baseEndpoint}/reject`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -534,7 +543,9 @@
 				status: status
 			};
 
-			if (status === 'kyc_done' || status === 'kyc') {
+			if (status === 'additional_documents_required') {
+				payload.docrequiredRemark = statusFormData.docrequiredRemark.trim();
+			} else if (status === 'kyc_done' || status === 'kyc') {
 				// payload.loan_amount = Number(statusFormData.loanAmount);
 			} else if (status === 'bill_upload_required') {
 				// No extra text fields needed; only file, orderId, key and status are sent
@@ -557,7 +568,7 @@
 				docFormData.append('key', roleKey);
 				docFormData.append('doDocument', statusFormData.doDocument[0]);
 
-				const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
+				const uploadRes = await fetch(`https://backend.finnova.health//api/reimbursement/document`, {
 					method: 'POST',
 					credentials: 'include',
 					body: docFormData
@@ -579,7 +590,7 @@
 
 			let res;
 
-			res = await fetch(`https://staging-backend.finnova.health/api/reimbursement/status`, {
+			res = await fetch(`https://backend.finnova.health//api/reimbursement/status`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
@@ -620,7 +631,7 @@
 				formData.append('additionalDocuments', f);
 			});
 
-			const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
+			const uploadRes = await fetch(`https://backend.finnova.health//api/reimbursement/document`, {
 				method: 'POST',
 				credentials: 'include',
 				body: formData
@@ -629,6 +640,7 @@
 			const data = await uploadRes.json();
 			if (uploadRes.ok) {
 				toast.update('Success', 'Additional documents uploaded successfully', 'success');
+				successfulUploads[selected_order_for_files.orderId] = true;
 				additionalFiles = [];
 				await loadData();
 				selected_order_for_files = rows.find(r => r.orderId === selected_order_for_files.orderId) || selected_order_for_files;
@@ -669,7 +681,7 @@
 			}
 			formData.append('finalBill', rmUploadFormData.finalBill[0]);
 
-			const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
+			const uploadRes = await fetch(`https://backend.finnova.health//api/reimbursement/document`, {
 				method: 'POST',
 				credentials: 'include',
 				body: formData
@@ -708,7 +720,7 @@
 			formData.append('key', doc.bucket || 'lender'); 
 			formData.append(doc.rawKey, file);
 
-			const uploadRes = await fetch(`https://staging-backend.finnova.health/api/reimbursement/document`, {
+			const uploadRes = await fetch(`https://backend.finnova.health//api/reimbursement/document`, {
 				method: 'POST',
 				credentials: 'include',
 				body: formData
@@ -717,6 +729,7 @@
 			const data = await uploadRes.json();
 			if (uploadRes.ok) {
 				toast.update('Success', 'Document replaced successfully', 'success');
+				successfulReplacements[`${selected_order_for_files.orderId}_${doc.rawKey}`] = true;
 				await loadData();
 				selected_order_for_files = rows.find(r => r.orderId === selected_order_for_files.orderId) || selected_order_for_files;
 			} else {
@@ -767,7 +780,7 @@
 
 		buttonActive = true;
 		try {
-			const res = await fetch(`https://staging-backend.finnova.health${baseEndpoint}/submit`, {
+			const res = await fetch(`https://backend.finnova.health/${baseEndpoint}/submit`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -995,7 +1008,7 @@
 
     try {
         const res = await fetch(
-            `https://staging-backend.finnova.health/api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
+            `https://backend.finnova.health//api/reimbursement/file-url?fileUrl=${encodeURIComponent(url)}`,
             {
                 method: 'GET',
                 credentials: 'include'
@@ -1035,7 +1048,7 @@
 		}
 		try {
 			const response = await fetch(
-				`https://staging-backend.finnova.health${baseEndpoint}/pending?${params.toString()}`,
+				`https://backend.finnova.health/${baseEndpoint}/pending?${params.toString()}`,
 				{
 					method: 'GET',
 					credentials: 'include',
@@ -1055,7 +1068,7 @@
 				return statusVal.replace(/_/g, ' ').toUpperCase();
 			}
 
-			orders = orders.map((order) => {
+			orders = orders?.map((order) => {
 				let isCompleted = false;
 				let actionStatus = null;
 				const role = user.role?.toLowerCase()?.trim();
@@ -1104,8 +1117,8 @@
 
 				const rawLenderStatus = (() => {
 					const latestLenderAction = order.lenderActions?.[order.lenderActions.length - 1];
-					if (role === 'relationship_manager') {
-						return normalizeStatus(latestLenderAction?.status || (order.lenderActions?.length ? '-' : order.status) || '-');
+					if (role === 'relationship_manager' || role === 'lender') {
+						return normalizeStatus(latestLenderAction?.status || 'new');
 					}
 					return normalizeStatus(latestLenderAction?.status || order.status || '-');
 				})();
@@ -1195,7 +1208,8 @@
 						: '-',
 					order_closure: order.OrderClosure || false,
 					status: order.status || '-',
-					disbursedAmount: order.status?.disbursedAmount?.$numberDecimal || '-'
+					disbursedAmount: order.status?.disbursedAmount?.$numberDecimal || '-',
+					docrequiredRemark: order.documents?.doctorDoc?.docrequiredRemark || order.documents?.lenderDoc?.docrequiredRemark || ''
 				};
 			});
 			totalPages = pageCount || 1;
@@ -1438,9 +1452,23 @@
 														>
 															{col.label || col.key}
 														</span>
-														<span class="text-base font-semibold text-slate-800 break-words">
-															{row[col.key]}
-														</span>
+														<div class="flex flex-col gap-1">
+	<span class="text-base font-semibold text-slate-800 break-words">
+		{row[col.key]}
+	</span>
+
+	{#if 
+		col.key === 'roleDisplayStatus' &&
+		row.docrequiredRemark &&
+		(row.rawRoleStatus === 'additional_documents_required' ||
+		 row.rawDocStatus === 'additional_documents_required' ||
+		 row.lenderRawStatus === 'additional_documents_required')
+	}
+		<span class="text-xs text-red-500 break-words">
+			Remark: {row.docrequiredRemark}
+		</span>
+	{/if}
+</div>
 													</div>
 
 													<div class="flex items-center gap-2 lg:hidden">
@@ -1794,10 +1822,29 @@
 									</span>
 								</span>
 							{:else}
-								<span class="truncate text-slate-700 text-[13px] font-semibold lg:font-medium">
-									{row[column.key] || '—'}
-								</span>
+								<div class="flex items-center gap-1.5 truncate">
+									<span class="truncate text-slate-700 text-[13px] font-semibold lg:font-medium">
+										{row[column.key] || '—'}
+
+									</span>
+
+								
+									
+									{#if (row?.documents?.lenderDoc.docrequiredRemark || row?.documents?.lenderDoc.docrequiredRemark) && String(row[column.key]).toUpperCase().includes('DOCUMENT REQUIRED')}
+										<div 
+											role="presentation"
+											class="inline-flex items-center justify-center shrink-0 cursor-help  p-5"
+											onmouseenter={(e) => handleTooltipEnter(e, row.docrequiredRemark)}
+											onmousemove={handleTooltipMove}
+											onmouseleave={handleTooltipLeave}
+										>
+											<Info size={14} class="text-[#ad5389] hover:text-slate-700 transition-colors" />
+
+										</div>
+									{/if}
+								</div>
 							{/if}
+							
 						</div>
 					{:else}
 						<div class="flex flex-col truncate">
@@ -1853,6 +1900,7 @@
 							/>
 						</div>
 					</div>
+					
 				</div>
 			</td>
 		{/each}
@@ -2079,6 +2127,21 @@
 						</div>
 					{/if}
 
+				{#if newStatus === 'additional_documents_required'}
+						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
+							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
+								Remark <span class="text-red-400 ml-1">*</span>
+							</label>
+							<textarea
+								bind:value={statusFormData.docrequiredRemark}
+								placeholder="Explain which documents are required and why..."
+								rows={3}
+								class="w-full p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none transition-all bg-slate-50 text-slate-700 resize-none"
+							></textarea>
+							<p class="text-[10px] text-slate-500 mt-2 font-medium">This remark will be visible to the relationship manager explaining what is required.</p>
+						</div>
+					{/if}
+
 					{#if newStatus === 'settled'}
 						<div class="animate-in fade-in slide-in-from-top-2 pt-4">
 							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
@@ -2154,26 +2217,33 @@
 										<span class="font-semibold text-slate-700">{doc.name}</span>
 										{#if canReplaceDocument(doc.bucket)}
 											<div class="relative">
-												<input
-													type="file"
-													id="reupload-{idx}"
-													accept=".pdf,.png,.jpg,.jpeg"
-													disabled={replacingDocIndex === idx}
-													onchange={(e) => replaceDocument(e, doc, idx)}
-													class="hidden"
-												/>
-												<label
-													for="reupload-{idx}"
-													class="shrink-0 flex gap-1.5 bg-slate-800 text-white font-medium items-center justify-center py-1.5 px-3 rounded-lg hover:bg-slate-700 transition-all shadow-sm {replacingDocIndex === idx ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}"
-												>
-													{#if replacingDocIndex === idx}
-														<Loader size={14} class="animate-spin" />
-														<span class="text-xs">Uploading...</span>
-													{:else}
-														<Upload size={14} />
-														<span class="text-xs">{doc.files && doc.files.length > 0 ? 'Replace' : 'Upload'}</span>
-													{/if}
-												</label>
+												{#if successfulReplacements[`${selected_order_for_files.orderId}_${doc.rawKey}`]}
+													<div class="shrink-0 flex gap-1.5 bg-green-50 text-green-700 font-medium items-center justify-center py-1.5 px-3 rounded-lg border border-green-200 shadow-sm">
+														<CheckCircle size={14} class="text-green-600" />
+														<span class="text-xs tracking-wide">File Uploaded</span>
+													</div>
+												{:else}
+													<input
+														type="file"
+														id="reupload-{idx}"
+														accept=".pdf,.png,.jpg,.jpeg"
+														disabled={replacingDocIndex === idx}
+														onchange={(e) => replaceDocument(e, doc, idx)}
+														class="hidden"
+													/>
+													<label
+														for="reupload-{idx}"
+														class="shrink-0 flex gap-1.5 bg-slate-800 text-white font-medium items-center justify-center py-1.5 px-3 rounded-lg hover:bg-slate-700 transition-all shadow-sm {replacingDocIndex === idx ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}"
+													>
+														{#if replacingDocIndex === idx}
+															<Loader size={14} class="animate-spin" />
+															<span class="text-xs">Uploading...</span>
+														{:else}
+															<Upload size={14} />
+															<span class="text-xs">{doc.files && doc.files.length > 0 ? 'Replace' : 'Upload'}</span>
+														{/if}
+													</label>
+												{/if}
 											</div>
 										{/if}
 									</div>
@@ -2213,26 +2283,33 @@
 										</button>
 										{#if canReplaceDocument(doc.bucket)}
 											<div class="relative">
-												<input
-													type="file"
-													id="reupload-{idx}"
-													accept=".pdf,.png,.jpg,.jpeg"
-													disabled={replacingDocIndex === idx}
-													onchange={(e) => replaceDocument(e, doc, idx)}
-													class="hidden"
-												/>
-												<label
-													for="reupload-{idx}"
-													class="shrink-0 flex gap-1.5 bg-slate-800 text-white font-medium items-center justify-center py-1.5 px-3 rounded-lg hover:bg-slate-700 transition-all shadow-sm {replacingDocIndex === idx ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}"
-												>
-													{#if replacingDocIndex === idx}
-														<Loader size={14} class="animate-spin" />
-														<span class="text-xs">Uploading...</span>
-													{:else}
-														<Upload size={14} />
-														<span class="text-xs">Replace</span>
-													{/if}
-												</label>
+												{#if successfulReplacements[`${selected_order_for_files.orderId}_${doc.rawKey}`]}
+													<div class="shrink-0 flex gap-1.5 bg-green-50 text-green-700 font-medium items-center justify-center py-1.5 px-3 rounded-lg border border-green-200 shadow-sm">
+														<CheckCircle size={14} class="text-green-600" />
+														<span class="text-xs tracking-wide">File Uploaded</span>
+													</div>
+												{:else}
+													<input
+														type="file"
+														id="reupload-{idx}"
+														accept=".pdf,.png,.jpg,.jpeg"
+														disabled={replacingDocIndex === idx}
+														onchange={(e) => replaceDocument(e, doc, idx)}
+														class="hidden"
+													/>
+													<label
+														for="reupload-{idx}"
+														class="shrink-0 flex gap-1.5 bg-slate-800 text-white font-medium items-center justify-center py-1.5 px-3 rounded-lg hover:bg-slate-700 transition-all shadow-sm {replacingDocIndex === idx ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}"
+													>
+														{#if replacingDocIndex === idx}
+															<Loader size={14} class="animate-spin" />
+															<span class="text-xs">Uploading...</span>
+														{:else}
+															<Upload size={14} />
+															<span class="text-xs">Replace</span>
+														{/if}
+													</label>
+												{/if}
 											</div>
 										{/if}
 									</div>
@@ -2248,37 +2325,96 @@
 					</div>
 				{/if}
 
-				{#if (selected_order_for_files?.actionStatus === 'ADDITIONAL DOCUMENTS REQUIRED' || selected_order_for_files?.doctorActionStatus === 'ADDITIONAL DOCUMENTS REQUIRED' || selected_order_for_files?.lenderActionStatus === 'ADDITIONAL DOCUMENTS REQUIRED' || selected_order_for_files?.actionStatus === 'ADDITIONAL_DOCUMENTS_REQUIRED' || selected_order_for_files?.status === 'ADDITIONAL_DOCUMENTS_REQUIRED' || selected_order_for_files?.status === 'additional_documents_required') && user.role
-						?.toLowerCase()
-						?.trim() === 'relationship_manager'}
+				{#if user.role?.toLowerCase()?.trim() === 'lender'}
+					{@const borrowerLoc = selected_order_for_files?.documents?.borrowerPhotoLocation}
+					{@const patientLoc = selected_order_for_files?.documents?.patientPhotoLocation}
+					{@const effectiveBorrowerLoc = borrowerLoc || patientLoc}
+					{@const effectivePatientLoc = patientLoc || borrowerLoc}
+					{#if effectiveBorrowerLoc || effectivePatientLoc}
+						<div class="mt-8 border-t border-slate-200 pt-6">
+							<h3 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Photo Locations</h3>
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+								{#if effectiveBorrowerLoc}
+									<a
+										href={`https://www.google.com/maps?q=${effectiveBorrowerLoc.latitude},${effectiveBorrowerLoc.longitude}`}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-[#ad5389]/50 hover:bg-[#ad5389]/5 transition-all group"
+									>
+										<div class="mt-0.5 p-2 bg-white rounded-lg border border-slate-200 group-hover:border-[#ad5389]/30 shadow-sm">
+											<MapPin size={16} class="text-[#ad5389]" />
+										</div>
+										<div class="flex flex-col min-w-0">
+											<span class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Borrower Photo Location</span>
+											<span class="text-sm font-semibold text-slate-700 group-hover:text-[#ad5389] transition-colors">{effectiveBorrowerLoc.latitude.toFixed(6)}, {effectiveBorrowerLoc.longitude.toFixed(6)}</span>
+											<span class="text-[10px] text-slate-400 mt-1">Tap to open in Google Maps</span>
+										</div>
+									</a>
+								{/if}
+								{#if effectivePatientLoc}
+									<a
+										href={`https://www.google.com/maps?q=${effectivePatientLoc.latitude},${effectivePatientLoc.longitude}`}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="flex items-start gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-[#ad5389]/50 hover:bg-[#ad5389]/5 transition-all group"
+									>
+										<div class="mt-0.5 p-2 bg-white rounded-lg border border-slate-200 group-hover:border-[#ad5389]/30 shadow-sm">
+											<MapPin size={16} class="text-[#ad5389]" />
+										</div>
+										<div class="flex flex-col min-w-0">
+											<span class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Patient Photo Location</span>
+											<span class="text-sm font-semibold text-slate-700 group-hover:text-[#ad5389] transition-colors">{effectivePatientLoc.latitude.toFixed(6)}, {effectivePatientLoc.longitude.toFixed(6)}</span>
+											<span class="text-[10px] text-slate-400 mt-1">Tap to open in Google Maps</span>
+										</div>
+									</a>
+								{/if}
+							</div>
+						</div>
+					{/if}
+				{/if}
+
+				{#if (() => {
+					const docStat = (selected_order_for_files?.doctorActions?.[selected_order_for_files.doctorActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_');
+					const lendStat = (selected_order_for_files?.lenderActions?.[selected_order_for_files.lenderActions.length - 1]?.status || '').toLowerCase().replace(/ /g, '_');
+					return docStat === 'additional_documents_required' || lendStat === 'additional_documents_required';
+				})() && user.role?.toLowerCase()?.trim() === 'relationship_manager'}
 					<div class="mt-8 border-t border-slate-200 pt-6">
-						<h3 class="text-lg font-bold text-slate-800 mb-4 tracking-tight">
-							Upload Additional Documents
-						</h3>
-						<input
-							type="file"
-							multiple
-							accept=".pdf,.png,.jpg,.jpeg"
-							onchange={(e) => {
-								const files = Array.from(e.target.files);
-								if (files.length > 10) {
-									toast.update(
-										'Warning',
-										'Maximum 10 files allowed. Extra files were ignored.',
-										'failed'
-									);
-								}
-								additionalFiles = files.slice(0, 10);
-							}}
-							class="block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:transition-colors mb-4 focus:outline-none"
-						/>
-						<button
-							disabled={additionalFiles.length === 0 || buttonActive}
-							onclick={uploadAdditionalDocs}
-							class="w-full shrink-0 flex gap-2 bg-[#ad5389] text-white font-semibold items-center justify-center py-3 px-6 rounded-xl border border-transparent hover:bg-[#8f4170] cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
-						>
-							Upload {additionalFiles.length} File{additionalFiles.length !== 1 ? 's' : ''} (Max 10)
-						</button>
+						{#if successfulUploads[selected_order_for_files.orderId]}
+							<div class="flex items-center justify-center py-6">
+								<div class="flex items-center gap-2 bg-green-50 text-green-700 font-medium py-2 px-4 rounded-xl border border-green-200 shadow-sm">
+									<CheckCircle size={18} class="text-green-600" />
+									<span class="text-sm font-bold uppercase tracking-wider">Additional Documents Uploaded</span>
+								</div>
+							</div>
+						{:else}
+							<!-- <h3 class="text-lg font-bold text-slate-800 mb-4 tracking-tight">
+								Upload Additional Documents
+							</h3>
+							<input
+								type="file"
+								multiple
+								accept=".pdf,.png,.jpg,.jpeg"
+								onchange={(e) => {
+									const files = Array.from(e.target.files);
+									if (files.length > 10) {
+										toast.update(
+											'Warning',
+											'Maximum 10 files allowed. Extra files were ignored.',
+											'failed'
+										);
+									}
+									additionalFiles = files.slice(0, 10);
+								}}
+								class="block w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 file:transition-colors mb-4 focus:outline-none"
+							/>
+							<button
+								disabled={additionalFiles.length === 0 || buttonActive}
+								onclick={uploadAdditionalDocs}
+								class="w-full shrink-0 flex gap-2 bg-[#ad5389] text-white font-semibold items-center justify-center py-3 px-6 rounded-xl border border-transparent hover:bg-[#8f4170] cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+							>
+								Upload {additionalFiles.length} File{additionalFiles.length !== 1 ? 's' : ''} (Max 10)
+							</button> -->
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -2737,7 +2873,7 @@
 						</div>
 					</div>
 					
-					{#if newClaimStatus === 'Settled' || newClaimStatus === 'claim_settled' || newClaimStatus === 'settled'}
+					{#if newClaimStatus === 'Settled' || newClaimStatus === 'claim_settled' || newClaimStatus === 'settled' }
 						<div class="animate-in fade-in slide-in-from-top-2">
 							<label class="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
 								Claim Amount <span class="text-red-400 ml-1">*</span>

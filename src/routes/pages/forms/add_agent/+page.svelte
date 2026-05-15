@@ -16,7 +16,7 @@
 		loading = true;
 
 		try {
-			const response = await fetch(`https://staging-backend.finnova.health${endpoint}`, {
+			const response = await fetch(`https://backend.finnova.health/${endpoint}`, {
 				method: 'GET',
 				credentials: 'include'
 			});
@@ -44,7 +44,7 @@
 		}
 		loading = true;
 		try {
-			const response = await fetch(`https://staging-backend.finnova.health/api/user-agent`, {
+			const response = await fetch(`https://backend.finnova.health//api/user-agent`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {

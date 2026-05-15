@@ -35,11 +35,12 @@
 	function onPageChange(newPage) {
 		currentPage = newPage;
 	}
+
 	async function handleClosure() {
 		buttonActive = true;
 		try {
 			// const token = getCookie('admin_jwt');
-			const res = await fetch(`https://staging-backend.finnova.health/api/order/closure`, {
+			const res = await fetch(`https://backend.finnova.health//api/order/closure`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -158,7 +159,7 @@
 			// params.append('context', 'hospital');
 		}
 		try {
-			const response = await fetch(`https://staging-backend.finnova.health/api/allOrders?${params.toString()}`, {
+			const response = await fetch(`https://backend.finnova.health//api/allOrders?${params.toString()}`, {
 				method: 'GET',
 				credentials: 'include'
 			});

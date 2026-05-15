@@ -36,7 +36,7 @@
 
 		loading = true;
 		try {
-			const response = await fetch(`https://staging-backend.finnova.health/auth/verify`, {
+			const response = await fetch(`https://backend.finnova.health//auth/verify`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: {
@@ -110,7 +110,7 @@
 		error = '';
 
 		try {
-			const response = await fetch(`https://staging-backend.finnova.health/auth/send`, {
+			const response = await fetch(`https://backend.finnova.health//auth/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
@@ -147,7 +147,7 @@
 		error = '';
 
 		try {
-			const response = await fetch(`https://staging-backend.finnova.health/auth/send`, {
+			const response = await fetch(`https://backend.finnova.health//auth/send`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json'
